@@ -1,8 +1,10 @@
-# Triggers — Command Runner Design (v1)
+# Triggers — Command Orchestration Design (v1)
 
 ## Core Principle
 Every string passed to `runner.trigger(...)` means:  
 **“Run every command whose `triggers` list contains this exact string.”**
+
+Triggers not only run commands but also fire registered callbacks—use on_trigger() for host reactivity.
 
 That’s it. No magic. No exceptions. No implicit runs based on command names—everything must be explicitly listed in `triggers` for clarity and safety.
 
@@ -82,14 +84,14 @@ triggers = ["command_finished:Lint"]      # run after Lint completes
 - Automatic: If a command is running and a string in its `cancel_on_triggers` is fired via `trigger(...)`, cancel it.
 - On cancel, emit `command_cancelled:<name>` (but not `command_finished:<name>`—cancels are separate).
 
-## Future Extensions (no schema changes needed)
+## Example uses
 
 - File/directory watching → Implement in your host app (e.g., with watchdog), then `runner.trigger("file_modified:src/")`.
 - Timers → Use a loop/timer in host: `runner.trigger("timer:30s")`.
 - Webhooks → Host receives webhook → `runner.trigger("webhook:ci_passed")`.
 - Git events → Poll or hook → `runner.trigger("git_head_moved")`.
 
-All just strings. All just work. The library doesn't build these in—users fire them as needed.
+All just strings. All just work. The library doesn't build these in. Users fire them as needed.
 
 ## Summary
 
@@ -98,4 +100,4 @@ All just strings. All just work. The library doesn't build these in—users fire
 - Cancellation via `cancel_on_triggers` or explicit methods.
 - Explicit self-triggers for manual runs (e.g., add `"Tests"` to Tests' triggers).
 
-Zero magic. Infinite flexibility. Done.
+Zero magic. Infinite flexibility.

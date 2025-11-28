@@ -1,4 +1,4 @@
-# Development Dockerfile for vibedir
+# Development Dockerfile for cmdorc
 # For use with VS Code Remote Development
 
 FROM python:3.10-slim AS base
@@ -25,7 +25,7 @@ USER developer
 
 # Set up Python environment
 ENV PATH=/home/developer/.local/bin:$PATH
-WORKDIR /mounted/dev/vibedir
+WORKDIR /mounted/dev/cmdorc
 
 # Install Python packages
 RUN python -m ensurepip --default-pip && \
@@ -37,8 +37,9 @@ RUN pip install --no-cache-dir \
     GitPython \
     pdm \
     pydantic \
+    prepdir \
     pytest \
     ruff \
     twine
 
-RUN git config --global --add safe.directory /mounted/dev/vibedir
+RUN git config --global --add safe.directory /mounted/dev/cmdorc

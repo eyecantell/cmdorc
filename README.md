@@ -33,10 +33,6 @@ pip install cmdorc
 1. Create a `config.toml`:
 
 ```toml
-[status_icons]  # Global overrides (optional)
-success = "✅"
-failed = "❌"
-
 [[command]]
 name = "Lint"
 triggers = ["changes_applied", "Lint"]  # Explicit self-trigger for manual runs
@@ -80,6 +76,21 @@ async def main():
 
 asyncio.run(main())
 ```
+
+## Configuration
+
+cmdorc does not search for config files — it works with already-loaded data.
+
+```python
+# Option 1: Load from TOML (great for examples)
+runner = CommandRunner(load_config("cmdorc.toml"))
+
+# Option 2: Pass commands directly (what VibeDir does)
+runner = CommandRunner(
+    commands=my_command_list,
+    base_directory="/path/to/project",
+    template_vars={"tests_directory": "/tests"}
+)
 
 ## Documentation
 

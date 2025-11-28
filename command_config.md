@@ -3,11 +3,15 @@
 This document is the single source of truth for how individual commands are configured in `config.toml`.
 
 ```toml
+[variables]  # Global template vars (optional section)
+tests_directory = "{{ base_directory }}/tests"  # Nested ok 
+base_directory = "."  # But usually overridden by host
+
 [[command]]
 name = "Tests"
 triggers = ["changes_applied", "Tests"]          # required — explicit self-trigger for manual runs
 cancel_on_triggers = ["changes_applied", "prompt_send"]
-command = "pytest {{ tests_directory }}"
+command = "pytest {{ tests_directory }}"         # tests_directory must be defined in variables or added at runtime
 max_concurrent = 1                               # default: 1, use 0 for unlimited
 timeout_secs = 600                               # optional — kill after N seconds
 on_retrigger = "cancel_and_restart"             # default, or "ignore"
