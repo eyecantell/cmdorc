@@ -1,0 +1,35 @@
+{
+    "name": "vibedir dev env",
+    "build": {
+        "dockerfile": "Dockerfile",
+        "context": ".."
+    },
+    "mounts": [
+        {
+            "type": "bind",
+            "source": "${localEnv:HOME}${localEnv:USERPROFILE}/dev",
+            "target": "/mounted/dev"
+        },
+        {
+            "source": "${localEnv:HOME}${localEnv:USERPROFILE}/stuff_for_containers_home",
+            "target": "/mounted/stuff_for_containers_home",
+            "type": "bind",
+            "consistency": "cached"
+        }
+    ],
+    "postCreateCommand": "cd /mounted/dev/vibedir && pdm install -G test -G dev",
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "ms-azuretools.vscode-docker",
+                "ms-python.python",
+                "github.vscode-github-actions",
+                "be5invis.toml"
+            ],
+            "settings": {
+                "python.defaultInterpreterPath": "/usr/local/bin/python",
+                "python.pythonPath": "/usr/local/bin/python"
+            }
+        }
+    }
+}
