@@ -150,6 +150,7 @@ class CommandRunner:
             if cmd.timeout_secs:
                 proc_wait = asyncio.create_task(proc.wait())
                 await asyncio.wait_for(proc_wait, timeout=cmd.timeout_secs)
+            await proc.wait()
             stdout, stderr = await proc.communicate()
             result.output = (stdout + stderr).decode(errors="replace")  # Combined, handle encoding issues
             result.success = (proc.returncode == 0)  # TODO: Add custom success if needed

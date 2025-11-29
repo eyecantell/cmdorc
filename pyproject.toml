@@ -1,0 +1,77 @@
+[project]
+name = "cmdorc"
+version = "0.1.0"
+description = "Command Orchestrator: AI-powered tool to manage and document project structure and content."
+readme = "README.md"
+authors = [
+    {name = "eyecantell", email = "paul@pneuma.solutions"},
+]
+license = {text = "MIT"}
+classifiers = [
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Intended Audience :: Developers",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Utilities",
+    "Development Status :: 4 - Beta",
+]
+keywords = [
+    "command line",
+    "orchestration",
+]
+requires-python = ">=3.9"
+dependencies = [
+    "dataclasses-json>=0.5.7",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest>=7.4.4",
+    "pytest-cov>=4.1.0",
+]
+
+[project.urls]
+Repository = "https://github.com/eyecantell/cmdorc"
+Issues = "https://github.com/eyecantell/cmdorc/issues"
+Documentation = "https://github.com/eyecantell/cmdorc#readme"
+
+[build-system]
+requires = ["pdm-backend"]
+build-backend = "pdm.backend"
+
+[tool.pdm]
+distribution = true
+package-dir = "src"
+includes = ["src/cmdorc", "src/cmdorc/config.yaml"]
+
+[tool.pdm.dev-dependencies]
+test = [
+    "pytest>=7.4.4",
+    "pytest-cov>=6.1.0",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py38"
+select = [
+    "E",  # pycodestyle errors
+    "W",  # pycodestyle warnings
+    "F",  # pyflakes
+    "I",  # isort
+    "B",  # flake8-bugbear
+    "C4", # flake8-comprehensions
+    "T20", # flake8-print
+]
+ignore = [
+    "E501", # Line length handled by ruff formatter
+]
+
+[tool.pytest.ini_options]
+addopts = "--cov=src/cmdorc --cov-report=term --cov-report=html"
+python_files = "test_*.py"
+testpaths = ["tests"]
+   
