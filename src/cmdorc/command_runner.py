@@ -146,23 +146,29 @@ class CommandRunner:
                 resolved_cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
-                cwd=self.vars["base_directory"]
+                cwd=self.vars["base_directory"],
             )
+
             if cmd.timeout_secs:
                 await asyncio.wait_for(proc.wait(), timeout=cmd.timeout_secs)
+
             stdout, stderr = await proc.communicate()
-            await proc.wait()  # Ensure returncode
+            # No need to await proc.wait() again — communicate() already waited
+
             result.output = (stdout + stderr).decode(errors="replace")
             result.success = proc.returncode == 0
             result.state = "success" if result.success else "failed"
+
         except asyncio.TimeoutError:
-            if proc:
+            if proc and proc.returncode is None:
                 proc.kill()
+                await proc.wait()
             result.error = "Timeout exceeded"
             result.state = "failed"
         except asyncio.CancelledError:
             if proc and proc.returncode is None:
                 proc.kill()
+                await proc.wait()
             result.state = "cancelled"
             raise
         except Exception as e:
@@ -173,19 +179,19 @@ class CommandRunner:
             result.duration_secs = (end_time - start_time).total_seconds()
             result.timestamp = end_time
 
-            # Cleanup
+            # Cleanup tasks
             self._tasks[cmd.name] = [t for t in self._tasks[cmd.name] if not t.done()]
 
-            # Store
+            # Store result
             self._results[cmd.name].append(result)
             if cmd.keep_history > 0:
                 self._results[cmd.name] = self._results[cmd.name][-cmd.keep_history:]
 
-            # State
+            # Update state only when no tasks left
             if not self._tasks[cmd.name]:
                 self._states[cmd.name] = result.state
 
-            # Auto
+            # Auto-trigger
             auto_event = f"command_{result.state}:{cmd.name}"
             await self.trigger(auto_event)
 

@@ -45,7 +45,9 @@ def test_load_config_nested_resolution_loop():
     loop_toml = BytesIO(
         """
     [variables]
-    a = "{{a}}"
+    a = "{{b}}"
+    b = "{{c}}"
+    c = "{{a}}"
     [[command]]
     name = "Test"
     command = "echo ok"
