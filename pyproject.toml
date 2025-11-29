@@ -1,11 +1,9 @@
 [project]
 name = "cmdorc"
 version = "0.1.0"
-description = "Command Orchestrator: AI-powered tool to manage and document project structure and content."
+description = "Lightweight, async-first command orchestrator using trigger strings."
 readme = "README.md"
-authors = [
-    {name = "eyecantell", email = "paul@pneuma.solutions"},
-]
+authors = [{name = "eyecantell", email = "paul@pneuma.solutions"}]
 license = {text = "MIT"}
 classifiers = [
     "Programming Language :: Python :: 3.9",
@@ -25,13 +23,14 @@ keywords = [
 ]
 requires-python = ">=3.9"
 dependencies = [
-    "dataclasses-json>=0.5.7",
+    "tomli>=2.0.1; python_version < '3.11'",
 ]
 
 [project.optional-dependencies]
 test = [
-    "pytest>=7.4.4",
-    "pytest-cov>=4.1.0",
+    "pytest>=7.4",
+    "pytest-asyncio>=0.21",
+    "pytest-cov>=4.1",
 ]
 
 [project.urls]
@@ -46,17 +45,18 @@ build-backend = "pdm.backend"
 [tool.pdm]
 distribution = true
 package-dir = "src"
-includes = ["src/cmdorc", "src/cmdorc/config.yaml"]
+includes = ["src/cmdorc"]
 
 [tool.pdm.dev-dependencies]
 test = [
-    "pytest>=7.4.4",
-    "pytest-cov>=6.1.0",
+    "pytest>=7.4",
+    "pytest-asyncio>=0.21",
+    "pytest-cov>=4.1",
 ]
 
 [tool.ruff]
 line-length = 120
-target-version = "py38"
+target-version = "py39"
 select = [
     "E",  # pycodestyle errors
     "W",  # pycodestyle warnings
@@ -71,7 +71,8 @@ ignore = [
 ]
 
 [tool.pytest.ini_options]
-addopts = "--cov=src/cmdorc --cov-report=term --cov-report=html"
-python_files = "test_*.py"
+addopts = "--cov=src/cmdorc --cov-report=term-missing --cov-report=html -v"
 testpaths = ["tests"]
-   
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+markers = ["asyncio: mark test as async"]

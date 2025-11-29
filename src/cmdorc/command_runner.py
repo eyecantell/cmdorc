@@ -15,7 +15,7 @@ from .command_config import CommandConfig
 from .runner_config import RunnerConfig
 
 
-@dataclass(frozen=True)
+@dataclass
 class RunResult:
     """
     Immutable result of a single command run.
@@ -138,7 +138,8 @@ class CommandRunner:
         run_id = str(uuid.uuid4())
         result = RunResult(run_id=run_id, trigger_event=trigger_event)
         start_time = datetime.datetime.now()
-        
+
+        proc = None
         try:
             resolved_cmd = cmd.command.format_map(self.vars)
             proc = await asyncio.create_subprocess_shell(
@@ -148,22 +149,22 @@ class CommandRunner:
                 cwd=self.vars["base_directory"]
             )
             if cmd.timeout_secs:
-                proc_wait = asyncio.create_task(proc.wait())
-                await asyncio.wait_for(proc_wait, timeout=cmd.timeout_secs)
-            await proc.wait()
+                await asyncio.wait_for(proc.wait(), timeout=cmd.timeout_secs)
             stdout, stderr = await proc.communicate()
-            result.output = (stdout + stderr).decode(errors="replace")  # Combined, handle encoding issues
-            result.success = (proc.returncode == 0)  # TODO: Add custom success if needed
+            await proc.wait()  # Ensure returncode
+            result.output = (stdout + stderr).decode(errors="replace")
+            result.success = proc.returncode == 0
             result.state = "success" if result.success else "failed"
         except asyncio.TimeoutError:
-            proc.kill()
+            if proc:
+                proc.kill()
             result.error = "Timeout exceeded"
             result.state = "failed"
         except asyncio.CancelledError:
-            if proc.returncode is None:
+            if proc and proc.returncode is None:
                 proc.kill()
             result.state = "cancelled"
-            raise  # Propagate for task cleanup
+            raise
         except Exception as e:
             result.error = str(e)
             result.state = "failed"
@@ -171,20 +172,20 @@ class CommandRunner:
             end_time = datetime.datetime.now()
             result.duration_secs = (end_time - start_time).total_seconds()
             result.timestamp = end_time
-            
-            # Cleanup tasks
+
+            # Cleanup
             self._tasks[cmd.name] = [t for t in self._tasks[cmd.name] if not t.done()]
-            
-            # Append to history and prune
+
+            # Store
             self._results[cmd.name].append(result)
             if cmd.keep_history > 0:
                 self._results[cmd.name] = self._results[cmd.name][-cmd.keep_history:]
-            
-            # Update state (simplified for multiples: last result if idle)
+
+            # State
             if not self._tasks[cmd.name]:
                 self._states[cmd.name] = result.state
-            
-            # Fire auto-trigger
+
+            # Auto
             auto_event = f"command_{result.state}:{cmd.name}"
             await self.trigger(auto_event)
 

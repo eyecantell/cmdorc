@@ -1,8 +1,20 @@
 # tests/conftest.py
+import sys
+import os
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'src')))
+
 import pytest
+import asyncio
 from cmdorc.command_config import CommandConfig
 from cmdorc.runner_config import RunnerConfig
 from cmdorc.command_runner import CommandRunner
+
+
+@pytest.fixture(scope="function")
+def event_loop():
+    loop = asyncio.get_event_loop_policy().new_event_loop()
+    yield loop
+    loop.close()
 
 @pytest.fixture
 def sample_command_config():

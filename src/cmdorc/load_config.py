@@ -1,11 +1,10 @@
-# cmdorc/load_config.py
 import tomli
-from typing import Dict
+from typing import Dict, BinaryIO, TextIO
+from pathlib import Path
 from .runner_config import RunnerConfig
 from .command_config import CommandConfig
 
-
-def load_config(path: str) -> RunnerConfig:
+def load_config(path: str | Path | BinaryIO | TextIO) -> RunnerConfig:
     """
     Load and validate a TOML config file into a RunnerConfig.
     
@@ -16,8 +15,11 @@ def load_config(path: str) -> RunnerConfig:
     
     Raises ValueError on invalid data or missing required fields.
     """
-    with open(path, "rb") as f:
-        data = tomli.load(f)
+    if hasattr(path, "read"):
+        data = tomli.load(path)  # type: ignore
+    else:
+        with open(path, "rb") as f:
+            data = tomli.load(f)
     
     # Extract and resolve [variables] (global defaults)
     vars_dict: Dict[str, str] = data.get("variables", {})

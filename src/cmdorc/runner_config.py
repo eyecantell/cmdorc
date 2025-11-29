@@ -19,3 +19,7 @@ class RunnerConfig:
     Example: {"base_directory": "/home/me/project", "tests_directory": "{{ base_directory }}/tests"}
     These act as defaults and can be overridden at runtime via CommandRunner.add_var()/set_vars().
     """
+
+    def __post_init__(self) -> None:
+            if not self.commands:
+                raise ValueError("At least one command is required")

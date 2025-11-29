@@ -1,4 +1,3 @@
-# cmdorc/config.py
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -66,3 +65,7 @@ class CommandConfig:
             raise ValueError("max_concurrent cannot be negative")
         if self.timeout_secs is not None and self.timeout_secs <= 0:
             raise ValueError("timeout_secs must be positive")
+        
+        # Validate Literal on_retrigger
+        if self.on_retrigger not in ("cancel_and_restart", "ignore"):
+            raise ValueError("on_retrigger must be 'cancel_and_restart' or 'ignore'")

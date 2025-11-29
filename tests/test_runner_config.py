@@ -1,6 +1,6 @@
 # tests/test_runner_config.py
 import pytest
-from cmdorc.runner_config import RunnerConfig
+from cmdorc import RunnerConfig, CommandConfig
 
 def test_runner_config_init(sample_runner_config):
     assert len(sample_runner_config.commands) == 1
@@ -9,9 +9,10 @@ def test_runner_config_init(sample_runner_config):
     assert sample_runner_config.vars["base_directory"] == "/tmp"
 
 def test_runner_config_empty_commands():
-    with pytest.raises(ValueError):  # Not enforced in class, but could add __post_init__
+    with pytest.raises(ValueError, match="At least one command is required"):
         RunnerConfig(commands=[])
 
 def test_runner_config_vars_default():
-    config = RunnerConfig(commands=[])
+    dummy_cmd = CommandConfig(name="Dummy", command="echo", triggers=[])
+    config = RunnerConfig(commands=[dummy_cmd])
     assert config.vars == {}
