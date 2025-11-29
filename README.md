@@ -114,7 +114,3 @@ Contributions welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 ## Why cmdorc?
 
 Built from discussions on modular dev tools: Separates command orchestration from UIs, enabling reuse. If you're building a TUI like VibeDir (with clipboard/API modes for LLMs), this is the backend for your right-side "Command Results" column—handling runs, statuses, and results for prompts.
-
-License: MIT.  
-Author: [Your Name/Org].  
-Issues/PRs: [GitHub Repo Link].
