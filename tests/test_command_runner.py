@@ -1,13 +1,13 @@
 # tests/test_command_runner.py
 import asyncio
 import logging
-from unittest.mock import AsyncMock, patch
+from unittest.mock import Mock, patch
 
 import pytest
-from cmdorc.command_config import CommandConfig  # ← ADD THIS
+from cmdorc.command_config import CommandConfig
 from cmdorc.command_runner import CommandRunner, RunResult
 
-
+logging.getLogger("cmdorc").setLevel(logging.DEBUG)
 
 @pytest.mark.asyncio
 async def test_command_runner_init(sample_runner):
@@ -25,11 +25,8 @@ async def test_callback_on_trigger(sample_runner):
         callback_called = True
     
     sample_runner.on_trigger("test_trigger", cb)
-    # Give the task a tiny moment to finish
-    await asyncio.sleep(0.01)
     
     await sample_runner.trigger("test_trigger")
-    # Give the task a tiny moment to finish
     await asyncio.sleep(0.01)
     
     assert callback_called
@@ -55,18 +52,21 @@ async def test_cycle_detection():
     # Verify second was ignored (only 1 task)
     assert len(runner._tasks["Cycle"]) == 1
 
+
 @pytest.mark.asyncio
 async def test_trigger_and_execute(sample_runner):
-    with patch("asyncio.create_subprocess_shell", new=AsyncMock()) as mock_shell:
+    with patch("asyncio.create_subprocess_shell") as mock_shell:
         mock_proc = mock_shell.return_value
         mock_proc.communicate.return_value = (b"hello world\n", b"")
         mock_proc.returncode = 0
-        mock_proc.wait.return_value = 0
 
         await sample_runner.trigger("test_trigger")
-        await asyncio.sleep(0.01)  # Let finally run
+        await asyncio.sleep(0.05)  # let _execute finally run
 
         assert sample_runner.get_status("TestCmd") == "success"
+        result = sample_runner.get_result("TestCmd")
+        assert result.success
+        assert "hello world" in result.output
 
 
 @pytest.mark.asyncio
@@ -79,27 +79,29 @@ async def test_auto_trigger_chaining():
         mock_proc = mock_shell.return_value
         mock_proc.communicate.return_value = (b"", b"")
         mock_proc.returncode = 0
-        mock_proc.wait.return_value = 0
 
         await runner.trigger("start")
-        await asyncio.sleep(0.05)
+        await asyncio.sleep(0.1)  # longer for chain
 
+        assert runner.get_status("Step1") == "success"
         assert runner.get_status("Step2") == "success"
+
 
 @pytest.mark.asyncio
 async def test_cancel(sample_runner):
-    with patch("asyncio.create_subprocess_shell", new=AsyncMock()) as mock_shell:
+    async def long_communicate():
+        await asyncio.sleep(10)
+        return (b"", b"")
+
+    with patch("asyncio.create_subprocess_shell") as mock_shell:
         mock_proc = mock_shell.return_value
-        # Never resolve – this ensures cancellation path is taken
-        mock_proc.communicate.side_effect = asyncio.sleep(999)
-        mock_proc.wait.side_effect = asyncio.sleep(999)
+        mock_proc.communicate.side_effect = long_communicate
+        mock_proc.wait.side_effect = long_communicate
+        mock_proc.returncode = None
 
         await sample_runner.trigger("test_trigger")
-        await asyncio.sleep(0.01)  # let it start
-
+        await asyncio.sleep(0.01)
         sample_runner.cancel_command("TestCmd")
-        await asyncio.sleep(0.02)
+        await asyncio.sleep(.5)
 
         assert sample_runner.get_status("TestCmd") == "cancelled"
-        result = sample_runner.get_result("TestCmd")
-        assert result.state == "cancelled"

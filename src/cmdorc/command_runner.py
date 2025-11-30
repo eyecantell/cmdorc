@@ -14,6 +14,7 @@ from typing import Callable, Dict, List, Literal, Optional
 from .command_config import CommandConfig
 from .runner_config import RunnerConfig
 
+logger = logging.getLogger(__name__)
 
 @dataclass
 class RunResult:
@@ -29,6 +30,8 @@ class RunResult:
     duration_secs: float = 0.0
     timestamp: datetime.datetime = field(default_factory=datetime.datetime.now)
     state: Literal["success", "failed", "cancelled"] = "cancelled"
+
+    # The way the command runner tracks running commands and results seems overly complex. Do we want to just create a RunResult when a command is triggered and track all state within it? (e.g. add an asyncio reference that we clear on completion)
 
 
 class CommandRunner:
@@ -59,10 +62,10 @@ class CommandRunner:
         # Callback registry (for hosts)
         self._callbacks: Dict[str, List[Callable[[Optional[Dict]], None]]] = defaultdict(list)
         
-        # State tracking
+        # State tracking  PRW - do we want to track this in RunResult instead?
         self._states: Dict[str, Literal["idle", "running", "success", "failed", "cancelled"]] = {name: "idle" for name in self._command_configs}
         
-        # Active tasks (for cancellation and concurrency checks)
+        # Active tasks (for cancellation and concurrency checks) PRW - do we want to track this in RunResult instead?
         self._tasks: Dict[str, List[asyncio.Task]] = {name: [] for name in self._command_configs}
         
         # Results history
@@ -70,6 +73,7 @@ class CommandRunner:
         
         # Cycle detection for recursion safety
         self._local = threading.local()
+        logger.debug(f"Initialized CommandRunner with commands: {list(self._command_configs.keys())}")
 
     def _build_trigger_map(self) -> Dict[str, List[CommandConfig]]:
         trigger_map = defaultdict(list)
@@ -88,7 +92,9 @@ class CommandRunner:
 
     async def trigger(self, event_name: str) -> None:
         """Fire a trigger event — dispatch to commands and callbacks."""
+        logger.debug(f"Triggering event '{event_name}'")
         if not self._trigger_map.get(event_name) and not self._callbacks.get(event_name):
+            logger.debug(f"No commands or callbacks subscribed to trigger '{event_name}' - returning")
             return  # Early exit if nothing subscribed
         
         # Cycle detection
@@ -107,16 +113,21 @@ class CommandRunner:
                 
                 # Auto-cancel check
                 if running_count > 0 and event_name in cmd.cancel_on_triggers:
+                    logger.debug(f"Auto-cancelling running instances of '{cmd.name}' due to trigger '{event_name}'")
                     self.cancel_command(cmd.name)
+                    continue  # Skip starting new if auto-cancel
                 
                 # Retrigger / concurrency check
                 if running_count >= cmd.max_concurrent and cmd.max_concurrent > 0:
+                    logger.debug(f"Command '{cmd.name}' has reached max concurrency ({cmd.max_concurrent}) on trigger '{event_name}'")
                     if cmd.on_retrigger == "ignore":
+                        logger.debug(f"Ignoring retrigger of '{cmd.name}' due to on_retrigger='ignore' policy")
                         continue
                     # else "cancel_and_restart"
                     self.cancel_command(cmd.name)
                 
                 # Start new run
+                logger.debug(f"Starting new execution of command '{cmd.name}' due to trigger '{event_name}'")
                 task = asyncio.create_task(self._execute(cmd, event_name))
                 self._tasks[cmd.name].append(task)
                 self._states[cmd.name] = "running"  # Simplified; for multiples, could track per-run
@@ -134,8 +145,10 @@ class CommandRunner:
         finally:
             self._local.active_events.remove(event_name)
 
+
     async def _execute(self, cmd: CommandConfig, trigger_event: str) -> None:
         run_id = str(uuid.uuid4())
+        logger.debug(f"Starting execution of command '{cmd.name}' (run_id={run_id}) triggered by '{trigger_event}'")
         result = RunResult(run_id=run_id, trigger_event=trigger_event)
         start_time = datetime.datetime.now()
 
@@ -156,6 +169,7 @@ class CommandRunner:
                 await asyncio.wait_for(proc.wait(), timeout=cmd.timeout_secs)
 
             stdout, stderr = await proc.communicate()
+            logger.debug(f"Command '{cmd.name}' output: {(stdout + stderr).decode(errors='replace')}")
             result.output = (stdout + stderr).decode(errors="replace")
             result.success = proc.returncode == 0
             result.state = "success" if result.success else "failed"
@@ -165,25 +179,35 @@ class CommandRunner:
                 proc.kill()
                 await proc.wait()
             result.error = "Timeout exceeded"
-            result.state = "cancelled"  # ← was "failed" – now correct
+            result.state = "failed"
+            self._states[cmd.name] = result.state
         except asyncio.CancelledError:
+            logger.debug(f"Command '{cmd.name}' was cancelled")
+            result.state = "cancelled"
+            result.error = "Command was cancelled"
+            self._states[cmd.name] = result.state
+            logger.debug(f"Command '{cmd.name}' cancellaation result is {result}")
             if proc and proc.returncode is None:
+                logger.debug(f"Killing process for command '{cmd.name}' due to cancellation")
                 proc.kill()
                 await proc.wait()
-            result.state = "cancelled"
-            raise  # re-raise so task is marked cancelled
+            # Important: re-raise so the task is marked as cancelled
+            raise
         except Exception as e:
             result.error = str(e)
             result.state = "failed"
+            self._states[cmd.name] = result.state
+            logger.exception(f"Error executing command '{cmd.name}': {e}, result: {result}")
         finally:
             end_time = datetime.datetime.now()
             result.duration_secs = (end_time - start_time).total_seconds()
             result.timestamp = end_time
 
-            # Final state – use the one we already set
+            # Critical: Always update state in finally
             self._states[cmd.name] = result.state
+            logger.debug(f"Command '{cmd.name}' completed with state '{result.state}'")
 
-            # Cleanup dead tasks
+            # Clean up completed tasks
             self._tasks[cmd.name] = [t for t in self._tasks[cmd.name] if not t.done()]
 
             # Store result
@@ -191,17 +215,19 @@ class CommandRunner:
             if cmd.keep_history > 0:
                 self._results[cmd.name] = self._results[cmd.name][-cmd.keep_history:]
 
-            # Fire auto-trigger
+            # Auto-trigger next commands
             auto_event = f"command_{result.state}:{cmd.name}"
-            asyncio.create_task(self.trigger(auto_event))  # fire-and-forget
+            await self.trigger(auto_event)
 
     def cancel_command(self, name: str) -> None:
         """Cancel all running instances of a command."""
+        logger.debug(f"Cancelling all running instances of command '{name}'")
         for task in self._tasks.get(name, []):
             task.cancel()
 
     def cancel_all(self) -> None:
         """Cancel all running commands."""
+        logger.debug("Cancelling all running commands")
         for name in self._command_configs:
             self.cancel_command(name)
 
@@ -209,6 +235,7 @@ class CommandRunner:
         """Get the current state of a command."""
         if name not in self._command_configs:
             raise ValueError(f"Unknown command '{name}'")
+        logger.debug(f"Getting status of command '{name}' from {self._states=}")
         return self._states[name]
 
     def get_result(self, name: str, run_id: Optional[str] = None) -> Optional[RunResult]:
