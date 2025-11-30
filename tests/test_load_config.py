@@ -1,8 +1,10 @@
 # tests/test_load_config.py
 import pytest
+import logging
 from io import BytesIO
 from cmdorc.load_config import load_config
 
+logging.getLogger("cmdorc").setLevel(logging.DEBUG)
 
 @pytest.fixture
 def sample_toml():
@@ -54,5 +56,5 @@ def test_load_config_nested_resolution_loop():
     triggers = []
     """.encode()
     )
-    with pytest.raises(ValueError, match="Infinite loop"):
+    with pytest.raises(ValueError, match="Stalled resolution in"):
         load_config(loop_toml)

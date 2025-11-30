@@ -1,8 +1,12 @@
+# src/cmdorc/load_config.py
 import tomli
+import logging
 from typing import Dict, BinaryIO, TextIO
 from pathlib import Path
 from .runner_config import RunnerConfig
 from .command_config import CommandConfig
+
+logger = logging.getLogger(__name__)
 
 def load_config(path: str | Path | BinaryIO | TextIO) -> RunnerConfig:
     """
@@ -22,9 +26,9 @@ def load_config(path: str | Path | BinaryIO | TextIO) -> RunnerConfig:
             data = tomli.load(f)
     
     # Extract and resolve [variables] (global defaults)
-    vars_dict: Dict[str, str] = data.get("variables", {})
-    
-    # Simple recursive resolution for nested {{ }}
+    vars_dict: Dict[str, str] = data.get("variables", {}).copy()
+
+    # Resolve nested {{ }} variables – detect cycles AND missing vars
     for _ in range(5):  # Max depth to avoid infinite loops
         changed = False
         for key, value in list(vars_dict.items()):
@@ -32,10 +36,16 @@ def load_config(path: str | Path | BinaryIO | TextIO) -> RunnerConfig:
                 new_value = value.format_map(vars_dict)
                 if new_value != value:
                     vars_dict[key] = new_value
+                    logger.debug(f"Resolved variable '{key}': '{value}' -> '{new_value}'")
                     changed = True
             except KeyError as e:
                 raise ValueError(f"Missing variable in [variables].{key}: {e}")
+            
         if not changed:
+            logger.debug("No more variable changes detected; resolution complete.")
+            for key, value in vars_dict.items():
+                if '{' in value and '}' in value:
+                    raise ValueError(f"Stalled resolution in [variables].{key}: unresolved placeholders remain in '{value}'")
             break
     else:
         raise ValueError("Infinite loop detected in [variables] resolution")
