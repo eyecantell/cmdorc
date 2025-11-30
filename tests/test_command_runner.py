@@ -70,21 +70,6 @@ async def test_trigger_and_execute(sample_runner):
 
 
 @pytest.mark.asyncio
-async def test_cancel(sample_runner):
-    with patch("asyncio.create_subprocess_shell", new=AsyncMock()) as mock_shell:
-        mock_proc = mock_shell.return_value
-        mock_proc.communicate.side_effect = asyncio.sleep(10)
-        mock_proc.wait.side_effect = asyncio.sleep(10)
-
-        await sample_runner.trigger("test_trigger")
-        await asyncio.sleep(0.01)
-        sample_runner.cancel_command("TestCmd")
-        await asyncio.sleep(0.02)
-
-        assert sample_runner.get_status("TestCmd") == "cancelled"
-
-
-@pytest.mark.asyncio
 async def test_auto_trigger_chaining():
     config1 = CommandConfig(name="Step1", command="echo 1", triggers=["start"])
     config2 = CommandConfig(name="Step2", command="echo 2", triggers=["command_success:Step1"])
@@ -100,3 +85,21 @@ async def test_auto_trigger_chaining():
         await asyncio.sleep(0.05)
 
         assert runner.get_status("Step2") == "success"
+
+@pytest.mark.asyncio
+async def test_cancel(sample_runner):
+    with patch("asyncio.create_subprocess_shell", new=AsyncMock()) as mock_shell:
+        mock_proc = mock_shell.return_value
+        # Never resolve – this ensures cancellation path is taken
+        mock_proc.communicate.side_effect = asyncio.sleep(999)
+        mock_proc.wait.side_effect = asyncio.sleep(999)
+
+        await sample_runner.trigger("test_trigger")
+        await asyncio.sleep(0.01)  # let it start
+
+        sample_runner.cancel_command("TestCmd")
+        await asyncio.sleep(0.02)
+
+        assert sample_runner.get_status("TestCmd") == "cancelled"
+        result = sample_runner.get_result("TestCmd")
+        assert result.state == "cancelled"

@@ -143,7 +143,6 @@ class CommandRunner:
         self._states[cmd.name] = "running"
 
         proc = None
-        task = None
         try:
             resolved_cmd = cmd.command.format_map(self.vars)
             proc = await asyncio.create_subprocess_shell(
@@ -157,7 +156,6 @@ class CommandRunner:
                 await asyncio.wait_for(proc.wait(), timeout=cmd.timeout_secs)
 
             stdout, stderr = await proc.communicate()
-
             result.output = (stdout + stderr).decode(errors="replace")
             result.success = proc.returncode == 0
             result.state = "success" if result.success else "failed"
@@ -167,13 +165,13 @@ class CommandRunner:
                 proc.kill()
                 await proc.wait()
             result.error = "Timeout exceeded"
-            result.state = "failed"
+            result.state = "cancelled"  # ← was "failed" – now correct
         except asyncio.CancelledError:
             if proc and proc.returncode is None:
                 proc.kill()
                 await proc.wait()
             result.state = "cancelled"
-            raise
+            raise  # re-raise so task is marked cancelled
         except Exception as e:
             result.error = str(e)
             result.state = "failed"
@@ -182,10 +180,10 @@ class CommandRunner:
             result.duration_secs = (end_time - start_time).total_seconds()
             result.timestamp = end_time
 
-            # Always update state here — even if cancelled
+            # Final state – use the one we already set
             self._states[cmd.name] = result.state
 
-            # Cleanup tasks
+            # Cleanup dead tasks
             self._tasks[cmd.name] = [t for t in self._tasks[cmd.name] if not t.done()]
 
             # Store result
@@ -193,9 +191,9 @@ class CommandRunner:
             if cmd.keep_history > 0:
                 self._results[cmd.name] = self._results[cmd.name][-cmd.keep_history:]
 
-            # Auto-trigger
+            # Fire auto-trigger
             auto_event = f"command_{result.state}:{cmd.name}"
-            await self.trigger(auto_event)
+            asyncio.create_task(self.trigger(auto_event))  # fire-and-forget
 
     def cancel_command(self, name: str) -> None:
         """Cancel all running instances of a command."""
