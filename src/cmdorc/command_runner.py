@@ -9,12 +9,22 @@ import threading
 import uuid
 from collections import defaultdict
 from dataclasses import dataclass, field
+from enum import StrEnum
 from typing import Callable, Dict, List, Literal, Optional
 
 from .command_config import CommandConfig
 from .runner_config import RunnerConfig
 
 logger = logging.getLogger(__name__)
+
+
+class RunState(StrEnum):
+    """Enumeration of possible states for a command run."""
+    CANCELLED = "cancelled"
+    FAILED = "failed"
+    IDLE = "idle"
+    RUNNING = "running"
+    SUCCESS = "success"
 
 
 @dataclass
@@ -31,41 +41,50 @@ class RunResult:
     output: str = ""
     success: Optional[bool] = None
     error: Optional[str] = None
-    duration_secs: float = 0.0
-    timestamp: datetime.datetime = field(default_factory=datetime.datetime.now)
 
-    state: Literal["running", "success", "failed", "cancelled"] = "running"
+    state: RunState = RunState.RUNNING
 
     # Live execution tracking
     task: Optional[asyncio.Task] = None
     start_time: Optional[datetime.datetime] = None
+    end_time: Optional[datetime.datetime] = None
+
+    @property
+    def duration_secs(self) -> Optional[float]:
+        if self.start_time and self.end_time:
+            return (self.end_time - self.start_time).total_seconds()
+        return None
 
     def mark_running(self) -> None:
-        self.state = "running"
+        self.state = RunState.RUNNING
         self.start_time = datetime.datetime.now()
-        self.timestamp = datetime.datetime.now()
 
     def mark_success(self) -> None:
-        self.state = "success"
+        self.state = RunState.SUCCESS
         self.success = True
         self._finalize()
 
     def mark_failed(self, error: str) -> None:
-        self.state = "failed"
+        self.state = RunState.FAILED
         self.success = False
         self.error = error
         self._finalize()
 
     def mark_cancelled(self) -> None:
-        self.state = "cancelled"
+        self.state = RunState.CANCELLED
         self.success = False
         self.error = "Command was cancelled"
         self._finalize()
 
     def _finalize(self) -> None:
-        if self.start_time:
-            self.duration_secs = (datetime.datetime.now() - self.start_time).total_seconds()
-        self.timestamp = datetime.datetime.now()
+        self.end_time = datetime.datetime.now()
+
+    def __repr__(self) -> str:
+        return (
+            f"RunResult(run_id='{self.run_id}', command_name='{self.command_name}', "
+            f"state={self.state}, success={self.success}, duration_secs={self.duration_secs():.2f}, "
+            f"error={self.error})"
+        )
 
 
 class CommandRunner:
@@ -86,6 +105,10 @@ class CommandRunner:
         self._command_configs: Dict[str, CommandConfig] = {
             c.name: c for c in config.commands
         }
+
+        # Validate unique command names
+        if len(self._command_configs) != len(config.commands):
+            raise ValueError("Command names must be unique")
 
         # Template variables
         self.vars: Dict[str, str] = config.vars.copy()
@@ -230,6 +253,9 @@ class CommandRunner:
             result.output = combined
             logger.debug(f"Command '{cmd.name}' completed normally")
 
+            if proc.returncode != 0:
+                raise RuntimeError(f"Non-zero exit code: {proc.returncode}")
+
             result.mark_success()
 
         except asyncio.TimeoutError:
@@ -249,6 +275,10 @@ class CommandRunner:
         except Exception as exc:
             logger.exception(f"Unexpected error in '{cmd.name}'")
             result.mark_failed(str(exc))
+
+        finally:
+            if result.state in (RunState.FAILED, RunState.CANCELLED) and result.output:
+                logger.error(f"Failed output for '{cmd.name}': {result.output}")
 
     def _task_completed(self, cmd_name: str, result: RunResult) -> None:
         """Called via done callback — moves run from live → history."""
