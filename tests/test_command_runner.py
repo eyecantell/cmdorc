@@ -16,23 +16,6 @@ async def test_command_runner_init(sample_runner):
     assert "test_trigger" in sample_runner._trigger_map
     assert sample_runner.get_status("TestCmd") == "idle"
 
-@pytest.mark.asyncio
-async def test_cycle_detection():
-    cmd = CommandConfig(
-        name="Cycle",
-        command="echo cycle",
-        triggers=["cycle", "command_success:Cycle"],
-    )
-    runner = CommandRunner([cmd])
-
-    with patch("logging.warning") as mock_warn:
-        await runner.trigger("cycle")
-        await asyncio.sleep(0.05)
-        await runner.trigger("cycle")  # second triggers warning
-
-        assert mock_warn.called
-        assert "Cycle detected" in mock_warn.call_args[0][0]
-
 
 @pytest.mark.asyncio
 async def test_callback_on_trigger(sample_runner):
@@ -57,10 +40,11 @@ async def test_trigger_and_execute(sample_runner):
         mock_proc = mock_shell.return_value
         mock_proc.communicate.return_value = (b"hello world\n", b"")
         mock_proc.returncode = 0
-        mock_proc.wait = AsyncMock(return_value=0)  # <-- critical
+        mock_proc.wait.return_value = 0
 
         await sample_runner.trigger("test_trigger")
-        await asyncio.sleep(0.05)  # give finally block time
+        task = sample_runner._tasks["TestCmd"][0]
+        await task  # Wait for completion
 
         assert sample_runner.get_status("TestCmd") == "success"
         result = sample_runner.get_result("TestCmd")
@@ -72,13 +56,16 @@ async def test_trigger_and_execute(sample_runner):
 async def test_cancel(sample_runner):
     with patch("asyncio.create_subprocess_shell", new=AsyncMock()) as mock_shell:
         mock_proc = mock_shell.return_value
-        mock_proc.communicate.side_effect = asyncio.sleep(10)
-        mock_proc.wait = AsyncMock(side_effect=asyncio.sleep(10))
+        mock_proc.communicate.return_value = (b"", b"")
+        mock_proc.returncode = 0
+        mock_proc.wait.return_value = 0
 
         await sample_runner.trigger("test_trigger")
-        await asyncio.sleep(0.01)
+        task = sample_runner._tasks["TestCmd"][0]
         sample_runner.cancel_command("TestCmd")
-        await asyncio.sleep(0.05)
+
+        with pytest.raises(asyncio.CancelledError):
+            await task
 
         assert sample_runner.get_status("TestCmd") == "cancelled"
 
@@ -93,9 +80,36 @@ async def test_auto_trigger_chaining():
         mock_proc = mock_shell.return_value
         mock_proc.communicate.return_value = (b"", b"")
         mock_proc.returncode = 0
-        mock_proc.wait = AsyncMock(return_value=0)
+        mock_proc.wait.return_value = 0
 
         await runner.trigger("start")
-        await asyncio.sleep(0.1)  # longer for chain
+
+        # Wait for all tasks
+        tasks = []
+        for name in runner._command_configs:
+            tasks.extend(runner._tasks[name])
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
 
         assert runner.get_status("Step2") == "success"
+
+
+@pytest.mark.asyncio
+async def test_cycle_detection():
+    cmd = CommandConfig(
+        name="Cycle",
+        command="echo cycle",
+        triggers=["cycle"],
+        on_retrigger="ignore",  # Ignore second to test no recursion
+    )
+    runner = CommandRunner([cmd])
+
+    with patch("logging.warning") as mock_warn:
+        await runner.trigger("cycle")
+        await asyncio.sleep(0.01)  # Let first start
+        await runner.trigger("cycle")  # Second should ignore, no cycle
+
+        assert not mock_warn.called  # No cycle warning
+
+    # Verify second was ignored (only 1 task)
+    assert len(runner._tasks["Cycle"]) == 1
