@@ -52,6 +52,9 @@ class RunResult:
     start_time: Optional[datetime.datetime] = None
     end_time: Optional[datetime.datetime] = None
 
+    # Cycle detection propagation
+    _seen: Optional[set[str]] = None
+
     # Timing helpers
     @property
     def duration_secs(self) -> Optional[float]:
@@ -146,10 +149,6 @@ class CommandRunner:
         self._live_runs: Dict[str, List[RunResult]] = defaultdict(list)
         self._history: Dict[str, List[RunResult]] = defaultdict(list)
 
-        # async-safe cycle detection
-        self._active_triggers: set[str] = set()
-        self._trigger_lock = asyncio.Lock()
-
         logger.debug(f"CommandRunner initialized with {len(self._command_configs)} commands")
 
     # Internal helpers
@@ -197,18 +196,24 @@ class CommandRunner:
         ]
 
     # Core trigger dispatch
-    async def trigger(self, event_name: str) -> None:
+    async def trigger(self, event_name: str, _seen: Optional[set[str]] = None) -> None:
         logger.debug(f"Trigger: {event_name}")
 
         if not (self._trigger_map.get(event_name) or self._callbacks.get(event_name)):
             return
 
-        # --- Async-safe cycle detection ---
-        async with self._trigger_lock:
-            if event_name in self._active_triggers:
-                logger.warning(f"Trigger cycle detected: {event_name}")
-                return
-            self._active_triggers.add(event_name)
+        # === True cycle detection across chained and auto-triggered events ===
+        if _seen is None:
+            _seen = set()
+
+        if event_name in _seen:
+            # Show recent part of the cycle for debuggability
+            recent = list(_seen)[-8:]
+            cycle_path = " → ".join(recent + [event_name])
+            logger.warning(f"Trigger cycle detected! Preventing re-entry: {cycle_path}")
+            return
+
+        _seen.add(event_name)
 
         try:
             # ---- Command dispatch -------------------------------------------------
@@ -218,7 +223,9 @@ class CommandRunner:
                 # cancel_on_triggers
                 if event_name in cmd.cancel_on_triggers and live:
                     for run in live:
-                        logger.debug(f"Cancelling command '{cmd.name}' ({run.run_id}) due to cancel_on_trigger '{event_name}'")
+                        logger.debug(
+                            f"Cancelling command '{cmd.name}' ({run.run_id}) due to cancel_on_trigger '{event_name}'"
+                        )
                         run.cancel()
                     continue
 
@@ -228,12 +235,15 @@ class CommandRunner:
                         continue
                     # cancel_and_restart
                     for run in live:
-                        logger.debug(f"Cancelling command '{cmd.name}' ({run.run_id}) due to retrigger policy 'cancel_and_restart'")
+                        logger.debug(
+                            f"Cancelling command '{cmd.name}' ({run.run_id}) due to retrigger policy 'cancel_and_restart'"
+                        )
                         run.cancel()
 
                 # ---- Start new run -------------------------------------------------
                 result = RunResult(trigger_event=event_name)
                 result.command_name = cmd.name
+                result._seen = _seen.copy()  # Propagate cycle chain to auto-triggers
                 result.mark_running()
 
                 task = asyncio.create_task(self._execute(cmd, result))
@@ -253,8 +263,7 @@ class CommandRunner:
                     logger.warning(f"Trigger callback error ({event_name}): {exc}")
 
         finally:
-            async with self._trigger_lock:
-                self._active_triggers.discard(event_name)
+            _seen.discard(event_name)
 
     # Execution
     async def _execute(self, cmd: CommandConfig, result: RunResult) -> None:
@@ -335,10 +344,16 @@ class CommandRunner:
                 logger.debug(f"Trimming history for command '{cmd_name}' to last {cfg.keep_history} runs")
                 self._history[cmd_name] = self._history[cmd_name][-cfg.keep_history:]
 
-        # Auto-trigger completion events
-        asyncio.create_task(self.trigger(f"command_{result.state.value}:{cmd_name}"))
+        # Auto-trigger completion events with propagated seen set
+        trigger_name = f"command_{result.state.value}:{cmd_name}"
+        if result._seen is not None:
+            asyncio.create_task(self.trigger(trigger_name, _seen=result._seen.copy()))
+        else:
+            asyncio.create_task(self.trigger(trigger_name))
+
         logger.debug(f"Command '{cmd_name}' ({result.run_id}) completed with state: {result.state}. {len(self._live_runs[cmd_name])} runs live. {len(self._history[cmd_name])} runs in history.")
         logger.debug(f"Command '{cmd_name}' ({result.run_id}) history is {[i.run_id + ': ' + i.state.value for i in self._history[cmd_name]]}")
+        logger.debug(f"Auto-triggered '{trigger_name}' with inherited cycle detection")
 
     # Control
     

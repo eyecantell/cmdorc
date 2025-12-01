@@ -121,7 +121,7 @@ async def test_cancel_and_restart_policy():
 
 
 @pytest.mark.asyncio
-async def test_trigger_cycle_detection():
+async def test_trigger_cycle_detection(caplog):
     cfg = CommandConfig(
         name="Loop",
         command="echo hello",
@@ -140,8 +140,8 @@ async def test_trigger_cycle_detection():
             assert await runner.wait_for_status("Loop", CommandStatus.SUCCESS, timeout=1.0)
             await asyncio.sleep(0.1)  # give cycle detection time
 
-            assert mock_warn.called
-            assert "cycle" in mock_warn.call_args[0][0].lower()
+            assert "trigger cycle detected" in caplog.text.lower()
+
 
 
 @pytest.mark.asyncio
