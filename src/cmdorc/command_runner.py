@@ -326,7 +326,7 @@ class CommandRunner:
     def _task_completed(self, cmd_name: str, result: RunResult) -> None:
         # Remove from live runs
 
-        if result.state == CommandStatus.RUNNING:
+        if result.state == RunState.RUNNING:
             raise ValueError(f"Command '{cmd_name}' ({result.run_id}) completed but result state is still RUNNING - should have been changed before calling _task_completed")
         
         self._live_runs[cmd_name] = [
