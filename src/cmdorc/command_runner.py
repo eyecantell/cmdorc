@@ -9,8 +9,8 @@ import threading
 import uuid
 from collections import defaultdict
 from dataclasses import dataclass, field
-from enum import StrEnum
-from typing import Callable, Dict, List, Literal, Optional
+from enum import Enum
+from typing import Callable, Dict, List, Optional
 
 from .command_config import CommandConfig
 from .runner_config import RunnerConfig
@@ -18,22 +18,25 @@ from .runner_config import RunnerConfig
 logger = logging.getLogger(__name__)
 
 
-class RunState(StrEnum):
-    """Enumeration of possible states for a command run."""
-    CANCELLED = "cancelled"
-    FAILED = "failed"
-    IDLE = "idle"
+class RunState(Enum):
+    """State of a single command execution (RunResult)."""
     RUNNING = "running"
     SUCCESS = "success"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+class CommandStatus(Enum):
+    """Effective status of a command in the runner."""
+    IDLE = "idle"
+    RUNNING = RunState.RUNNING.value
+    SUCCESS = RunState.SUCCESS.value
+    FAILED = RunState.FAILED.value
+    CANCELLED = RunState.CANCELLED.value
 
 
 @dataclass
 class RunResult:
-    """
-    Single source of truth for a command execution.
-    Created when a command starts, lives through running → completion,
-    then moved to history.
-    """
     run_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     command_name: str = field(init=False)
     trigger_event: Optional[str] = None
@@ -44,55 +47,80 @@ class RunResult:
 
     state: RunState = RunState.RUNNING
 
-    # Live execution tracking
+    # Timing
     task: Optional[asyncio.Task] = None
     start_time: Optional[datetime.datetime] = None
     end_time: Optional[datetime.datetime] = None
 
+    # Timing helpers
     @property
     def duration_secs(self) -> Optional[float]:
+        """Exact duration in seconds (float) or None if not finished."""
         if self.start_time and self.end_time:
             return (self.end_time - self.start_time).total_seconds()
         return None
 
+    @property
+    def duration_str(self) -> str:
+        """Human-readable duration – e.g. '1m 23s', '2.4s', '1h 5m'."""
+        secs = self.duration_secs
+        if secs is None:
+            return "–"
+
+        if secs < 60:
+            return f"{secs:.1f}s"
+
+        mins, secs = divmod(secs, 60)
+        if mins < 60:
+            return f"{int(mins)}m {secs:.0f}s"
+
+        hrs, mins = divmod(mins, 60)
+        return f"{int(hrs)}h {int(mins)}m"
+
+    def cancel(self) -> None:
+        if self.task and not self.task.done():
+            logger.debug(f"Cancelling run for command '{self.command_name}' ({self.run_id})")
+            self.mark_cancelled()
+            self.task.cancel()
+
+    # State transition helpers
     def mark_running(self) -> None:
         self.state = RunState.RUNNING
         self.start_time = datetime.datetime.now()
+        logger.debug(f"Command '{self.command_name}' ({self.run_id}) started at {self.start_time}")
 
     def mark_success(self) -> None:
         self.state = RunState.SUCCESS
         self.success = True
         self._finalize()
+        logger.debug(f"Command '{self.command_name}' ({self.run_id}) succeeded at {self.end_time}")
 
     def mark_failed(self, error: str) -> None:
         self.state = RunState.FAILED
         self.success = False
         self.error = error
         self._finalize()
+        logger.debug(f"Command '{self.command_name}' ({self.run_id}) failed at {self.end_time} with error: {error}")
 
     def mark_cancelled(self) -> None:
         self.state = RunState.CANCELLED
         self.success = False
         self.error = "Command was cancelled"
         self._finalize()
+        logger.debug(f"Command '{self.command_name}' ({self.run_id}) cancelled at {self.end_time}")
 
     def _finalize(self) -> None:
         self.end_time = datetime.datetime.now()
 
     def __repr__(self) -> str:
+        dur = f"{self.duration_secs:.2f}s" if self.duration_secs else "–"
         return (
-            f"RunResult(run_id='{self.run_id}', command_name='{self.command_name}', "
-            f"state={self.state}, success={self.success}, duration_secs={self.duration_secs():.2f}, "
-            f"error={self.error})"
+            f"RunResult(id={self.run_id[:8]}, cmd='{self.command_name}', "
+            f"state={self.state}, dur={dur}, success={self.success})"
         )
 
 
 class CommandRunner:
-    """
-    Lightweight, async-first command orchestrator.
-    All state is centralized in RunResult objects.
-    """
-
     def __init__(
         self,
         config: RunnerConfig | List[CommandConfig],
@@ -101,141 +129,136 @@ class CommandRunner:
         if isinstance(config, list):
             config = RunnerConfig(commands=config)
 
-        # Immutable config snapshot
         self._command_configs: Dict[str, CommandConfig] = {
             c.name: c for c in config.commands
         }
-
-        # Validate unique command names
         if len(self._command_configs) != len(config.commands):
-            raise ValueError("Command names must be unique")
+            raise ValueError("Duplicate command names detected")
 
-        # Template variables
         self.vars: Dict[str, str] = config.vars.copy()
         self.vars["base_directory"] = base_directory or self.vars.get(
             "base_directory", os.getcwd()
         )
 
-        # Trigger → list of commands
-        self._trigger_map: Dict[str, List[CommandConfig]] = self._build_trigger_map()
+        self._trigger_map = self._build_trigger_map()
+        self._callbacks: Dict[str, List[Callable[[Optional[Dict]], None]]] = defaultdict(list)
 
-        # Callbacks for external triggers
-        self._callbacks: Dict[str, List[Callable[[Optional[Dict]], None]]] = defaultdict(
-            list
-        )
-
-        # Live + completed runs
         self._live_runs: Dict[str, List[RunResult]] = defaultdict(list)
         self._history: Dict[str, List[RunResult]] = defaultdict(list)
 
-        # Cycle detection
         self._local = threading.local()
 
-        logger.debug(
-            f"CommandRunner initialized with commands: {list(self._command_configs.keys())}"
-        )
+        logger.debug(f"CommandRunner initialized with {len(self._command_configs)} commands")
 
+    # Internal helpers
     def _build_trigger_map(self) -> Dict[str, List[CommandConfig]]:
-        trigger_map: Dict[str, List[CommandConfig]] = defaultdict(list)
+        mapping: Dict[str, List[CommandConfig]] = defaultdict(list)
         for cmd in self._command_configs.values():
-            for trigger in cmd.triggers:
-                trigger_map[trigger].append(cmd)
-        return trigger_map
+            for t in cmd.triggers:
+                mapping[t].append(cmd)
+        return mapping
 
-    # ------------------------------------------------------------------ #
+    def _resolve_template(self, template: str, *, max_depth: int = 10) -> str:
+        """Resolve nested {{var}} references with cycle protection."""
+        current = template
+        seen = set()
+
+        for _ in range(max_depth):
+            if current in seen:
+                raise RecursionError(f"Template resolution cycle detected: {template}")
+            seen.add(current)
+
+            try:
+                resolved = current.format_map(self.vars)
+            except KeyError as e:
+                raise KeyError(
+                    f"Unresolvable variable '{e.args[0]}' in template: {template}"
+                ) from None
+
+            if resolved == current:
+                if current != template:
+                    logger.debug(f"Template resolved: {template} -> {resolved}")
+                return resolved
+            current = resolved
+
+        raise RecursionError(f"Exceeded max template nesting depth ({max_depth})")
+
     # Trigger registration
-    # ------------------------------------------------------------------ #
     def on_trigger(self, trigger_name: str, callback: Callable[[Optional[Dict]], None]):
+        logger.debug(f"Registering callback for trigger: '{trigger_name}'")
         self._callbacks[trigger_name].append(callback)
 
     def off_trigger(self, trigger_name: str, callback: Callable[[Optional[Dict]], None]):
+        logger.debug(f"Unregistering callback for trigger: '{trigger_name}'")
         self._callbacks[trigger_name] = [
             cb for cb in self._callbacks[trigger_name] if cb != callback
         ]
 
-    # ------------------------------------------------------------------ #
     # Core trigger dispatch
-    # ------------------------------------------------------------------ #
     async def trigger(self, event_name: str) -> None:
-        logger.debug(f"Trigger event: {event_name}")
+        logger.debug(f"Trigger: {event_name}")
 
-        if not self._trigger_map.get(event_name) and not self._callbacks.get(event_name):
-            logger.debug(f"No listeners for trigger '{event_name}'")
+        if not (self._trigger_map.get(event_name) or self._callbacks.get(event_name)):
             return
 
         # Cycle detection
         if not hasattr(self._local, "active_events"):
             self._local.active_events = set()
         if event_name in self._local.active_events:
-            logger.warning(f"Cycle detected on trigger '{event_name}' — skipping")
+            logger.warning(f"Trigger cycle detected: {event_name}")
             return
         self._local.active_events.add(event_name)
 
         try:
-            # Dispatch to commands
+            # ---- Command dispatch -------------------------------------------------
             for cmd in self._trigger_map.get(event_name, []):
                 live = self._live_runs[cmd.name]
 
-                # Auto-cancel policy
+                # cancel_on_triggers
                 if event_name in cmd.cancel_on_triggers and live:
-                    logger.debug(
-                        f"Auto-cancelling running '{cmd.name}' due to trigger '{event_name}'"
-                    )
                     for run in live:
-                        if run.task:
-                            run.task.cancel()
-                    continue  # skip starting new
+                        logger.debug(f"Cancelling command '{cmd.name}' ({run.run_id}) due to cancel_on_trigger '{event_name}'")
+                        run.cancel()
+                    continue
 
-                # Concurrency + retrigger policy
+                # Concurrency / retrigger policy
                 if cmd.max_concurrent > 0 and len(live) >= cmd.max_concurrent:
                     if cmd.on_retrigger == "ignore":
-                        logger.debug(
-                            f"Ignoring retrigger of '{cmd.name}' (max_concurrent reached)"
-                        )
                         continue
-                    else:  # cancel_and_restart
-                        logger.debug(
-                            f"Cancelling old runs of '{cmd.name}' to allow restart"
-                        )
-                        for run in live:
-                            if run.task:
-                                run.task.cancel()
+                    # cancel_and_restart
+                    for run in live:
+                        logger.debug(f"Cancelling command '{cmd.name}' ({run.run_id}) due to retrigger policy 'cancel_and_restart'")
+                        run.cancel()
 
-                # Start new run
+                # ---- Start new run -------------------------------------------------
                 result = RunResult(trigger_event=event_name)
                 result.command_name = cmd.name
                 result.mark_running()
 
                 task = asyncio.create_task(self._execute(cmd, result))
                 result.task = task
-                task.add_done_callback(
-                    lambda t: self._task_completed(cmd.name, result)
-                )
+                task.add_done_callback(lambda t: self._task_completed(cmd.name, result))
 
                 self._live_runs[cmd.name].append(result)
-                logger.debug(f"Started '{cmd.name}' (run_id={result.run_id})")
 
-            # Fire callbacks (after command dispatch)
-            payload: Optional[Dict] = None
+            # ---- External callbacks -----------------------------------------------
             for cb in self._callbacks.get(event_name, []):
                 try:
                     if asyncio.iscoroutinefunction(cb):
-                        asyncio.create_task(cb(payload))
+                        asyncio.create_task(cb(None))
                     else:
-                        cb(payload)
+                        cb(None)
                 except Exception as exc:
-                    logger.warning(f"Callback error on '{event_name}': {exc}")
+                    logger.warning(f"Trigger callback error ({event_name}): {exc}")
 
         finally:
             self._local.active_events.remove(event_name)
 
-    # ------------------------------------------------------------------ #
     # Execution
-    # ------------------------------------------------------------------ #
     async def _execute(self, cmd: CommandConfig, result: RunResult) -> None:
         proc = None
         try:
-            resolved_cmd = cmd.command.format_map(self.vars)
+            resolved_cmd = self._resolve_template(cmd.command)
             logger.debug(f"Executing '{cmd.name}': {resolved_cmd}")
 
             proc = await asyncio.create_subprocess_shell(
@@ -249,99 +272,110 @@ class CommandRunner:
                 await asyncio.wait_for(proc.wait(), timeout=cmd.timeout_secs)
 
             stdout, stderr = await proc.communicate()
-            combined = (stdout + stderr).decode(errors="replace")
-            result.output = combined
-            logger.debug(f"Command '{cmd.name}' completed normally")
+            result.output = (stdout + stderr).decode(errors="replace")
 
             if proc.returncode != 0:
-                raise RuntimeError(f"Non-zero exit code: {proc.returncode}")
+                raise RuntimeError(f"Exit code {proc.returncode}")
 
             result.mark_success()
 
         except asyncio.TimeoutError:
-            if proc and proc.returncode is None:
-                proc.kill()
-                await proc.wait()
+            
+            logger.info(f"Command '{cmd.name}' was cancelled ({result.run_id}) due to timeout")
             result.mark_failed("Timeout exceeded")
-
-        except asyncio.CancelledError:
-            logger.debug(f"Command '{cmd.name}' was cancelled")
             if proc and proc.returncode is None:
                 proc.kill()
-                await proc.wait()
+                try:
+                    await proc.wait()  # swallow any error
+                except Exception:
+                    pass
+            return  # CRITICAL: skip communicate() entirely
+
+        # And replace the CancelledError block with this:
+        except asyncio.CancelledError:
+            logger.info(f"Command '{cmd.name}' was cancelled ({result.run_id}) in async context")
             result.mark_cancelled()
-            raise  # let task be marked cancelled
+            if proc and proc.returncode is None:
+                proc.kill()
+                try:
+                    await proc.wait()
+                except Exception:
+                    pass
+            # DO NOT re-raise — let the task finish cleanly
+            return
 
         except Exception as exc:
-            logger.exception(f"Unexpected error in '{cmd.name}'")
+            logger.exception(f"Command '{cmd.name}' failed")
             result.mark_failed(str(exc))
 
         finally:
-            if result.state in (RunState.FAILED, RunState.CANCELLED) and result.output:
-                logger.error(f"Failed output for '{cmd.name}': {result.output}")
+            if result.state in (RunState.FAILED, RunState.CANCELLED) and result.output.strip():
+                logger.error(f"Error output from '{cmd.name}':\n{result.output}")
 
     def _task_completed(self, cmd_name: str, result: RunResult) -> None:
-        """Called via done callback — moves run from live → history."""
         # Remove from live runs
+
+        if result.state == CommandStatus.RUNNING:
+            raise ValueError(f"Command '{cmd_name}' ({result.run_id}) completed but result state is still RUNNING - should have been changed before calling _task_completed")
+        
         self._live_runs[cmd_name] = [
             r for r in self._live_runs[cmd_name] if r.run_id != result.run_id
         ]
 
-        # Add to history (with retention)
-        cmd_cfg = self._command_configs[cmd_name]
-        self._history[cmd_name].append(result)
-        if cmd_cfg.keep_history > 0:
-            self._history[cmd_name] = self._history[cmd_name][-cmd_cfg.keep_history :]
+        # Store in history (with retention)
+        cfg = self._command_configs[cmd_name]
+
+        if cfg.keep_history > 0:
+            self._history[cmd_name].append(result)
+
+            if len(self._history[cmd_name]) > cfg.keep_history:
+                # Retain only the most recent runs as per keep_history setting
+                logger.debug(f"Trimming history for command '{cmd_name}' to last {cfg.keep_history} runs")
+                self._history[cmd_name] = self._history[cmd_name][-cfg.keep_history:]
 
         # Auto-trigger completion events
-        auto_event = f"command_{result.state}:{cmd_name}"
-        asyncio.create_task(self.trigger(auto_event))
+        asyncio.create_task(self.trigger(f"command_{result.state.value}:{cmd_name}"))
+        logger.debug(f"Command '{cmd_name}' ({result.run_id}) completed with state: {result.state}. {len(self._live_runs[cmd_name])} runs live. {len(self._history[cmd_name])} runs in history.")
+        logger.debug(f"Command '{cmd_name}' ({result.run_id}) history is {[i.run_id + ': ' + i.state.value for i in self._history[cmd_name]]}")
 
-    # ------------------------------------------------------------------ #
     # Control
-    # ------------------------------------------------------------------ #
+    
+
     def cancel_command(self, name: str) -> None:
-        """Cancel all running instances of a command."""
+        logger.debug(f"Cancelling command: {name}")
         for run in self._live_runs.get(name, []):
-            if run.task and not run.task.done():
-                run.task.cancel()
-        logger.debug(f"Requested cancellation of all running '{name}'")
+            run.cancel()
 
     def cancel_all(self) -> None:
+        logger.debug("Cancelling all commands")
         for runs in self._live_runs.values():
             for run in runs:
-                if run.task and not run.task.done():
-                    run.task.cancel()
-        logger.debug("Requested cancellation of all running commands")
+                run.cancel()
 
-    # ------------------------------------------------------------------ #
     # Queries
-    # ------------------------------------------------------------------ #
-    def get_status(self, name: str) -> Literal["idle", "running", "success", "failed", "cancelled"]:
+    def get_status(self, name: str) -> CommandStatus:
+        """Current status of the command (running → last run state → idle)."""
         if name not in self._command_configs:
-            raise ValueError(f"Unknown command '{name}'")
+            raise ValueError(f"Unknown command: {name}")
 
         if self._live_runs[name]:
-            return "running"
+            return CommandStatus.RUNNING
+        if self._history[name]:
+            return CommandStatus(self._history[name][-1].state.value)
+        return CommandStatus.IDLE
 
-        hist = self._history[name]
-        return hist[-1].state if hist else "idle"
-
-    def get_result(
-        self, name: str, run_id: Optional[str] = None
-    ) -> Optional[RunResult]:
+    def get_result(self, name: str, run_id: Optional[str] = None) -> Optional[RunResult]:
         if name not in self._command_configs:
-            raise ValueError(f"Unknown command '{name}'")
+            raise ValueError(f"Unknown command: {name}")
 
         if run_id:
-            # Search live first, then history
             for runs in (self._live_runs[name], self._history[name]):
                 for r in runs:
                     if r.run_id == run_id:
                         return r
-            raise ValueError(f"Run ID {run_id} not found for command '{name}'")
+            raise ValueError(f"Run not found: {run_id}")
 
-        # Latest run (live takes precedence)
+        # latest = live first, then history
         if self._live_runs[name]:
             return self._live_runs[name][-1]
         if self._history[name]:
@@ -349,42 +383,66 @@ class CommandRunner:
         return None
 
     def get_history(self, name: str) -> List[RunResult]:
-        if name not in self._command_configs:
-            raise ValueError(f"Unknown command '{name}'")
         return self._history[name].copy()
 
     def get_live_runs(self, name: str) -> List[RunResult]:
-        if name not in self._command_configs:
-            raise ValueError(f"Unknown command '{name}'")
         return self._live_runs[name].copy()
 
-    # ------------------------------------------------------------------ #
     # Introspection
-    # ------------------------------------------------------------------ #
     def get_commands_by_trigger(self, trigger_name: str) -> List[CommandConfig]:
         return self._trigger_map.get(trigger_name, []).copy()
 
     def has_trigger(self, trigger_name: str) -> bool:
-        return bool(self._trigger_map.get(trigger_name))
+        return trigger_name in self._trigger_map
 
-    # ------------------------------------------------------------------ #
-    # Vars & validation
-    # ------------------------------------------------------------------ #
+    # Variable handling
     def set_vars(self, vars_dict: Dict[str, str]) -> None:
         self.vars.update(vars_dict)
 
     def add_var(self, key: str, value: str) -> None:
         self.vars[key] = value
 
-    def validate_templates(self, strict: bool = False) -> Dict[str, str]:
-        unresolved = {}
+    def validate_templates(self, strict: bool = False) -> Dict[str, List[str]]:
+        """Validate all command templates – returns dict of command → list of errors."""
+        unresolved: Dict[str, List[str]] = {}
         for cmd in self._command_configs.values():
             try:
-                cmd.command.format_map(self.vars)
-            except KeyError as e:
-                unresolved[cmd.name] = str(e)
+                self._resolve_template(cmd.command)
+            except Exception as exc:
+                unresolved.setdefault(cmd.name, []).append(str(exc))
+
         if unresolved and strict:
-            raise ValueError(f"Unresolved template vars: {unresolved}")
-        elif unresolved:
-            logger.warning(f"Unresolved template vars: {unresolved}")
+            raise ValueError(f"Unresolved templates: {unresolved}")
         return unresolved
+    
+    async def wait_for_status(
+        self,
+        name: str,
+        status: CommandStatus | list[CommandStatus],
+        timeout: float = 5.0,
+    ) -> bool:
+        """
+        Wait until a command reaches one of the desired statuses.
+        Returns True if reached, False if timeout.
+        """
+        if isinstance(status, CommandStatus):
+            status = [status]
+
+        start = asyncio.get_event_loop().time()
+        deadline = start + timeout
+        while asyncio.get_event_loop().time() < deadline:
+            current = self.get_status(name)
+            if current in status:
+                logger.debug(f"Command '{name}' ({self.get_result(name).run_id if self.get_result(name) else 'unknown'}) reached status: {current} after {asyncio.get_event_loop().time() - start:.2f}s")
+                return True
+            await asyncio.sleep(0.01)  # 10ms polling — fast and responsive
+        return False
+    
+    async def wait_for_running(self, name: str, timeout: float = 5.0) -> bool:
+        return await self.wait_for_status(name, CommandStatus.RUNNING, timeout)
+
+    async def wait_for_idle(self, name: str, timeout: float = 5.0) -> bool:
+        return await self.wait_for_status(name, CommandStatus.IDLE, timeout)
+    
+    async def wait_for_cancelled(self, name: str, timeout: float = 5.0) -> bool:
+        return await self.wait_for_status(name, CommandStatus.CANCELLED, timeout)

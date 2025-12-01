@@ -10,12 +10,6 @@ from cmdorc.runner_config import RunnerConfig
 from cmdorc.command_runner import CommandRunner
 
 
-@pytest.fixture(scope="function")
-def event_loop():
-    loop = asyncio.get_event_loop_policy().new_event_loop()
-    yield loop
-    loop.close()
-
 @pytest.fixture
 def sample_command_config():
     return CommandConfig(
@@ -37,5 +31,6 @@ def sample_runner_config(sample_command_config):
     )
 
 @pytest.fixture
-def sample_runner(sample_runner_config):
-    return CommandRunner(sample_runner_config)
+def sample_runner(sample_command_config):
+    config = RunnerConfig(commands=[sample_command_config], vars={"message": "hello"})
+    return CommandRunner(config)
