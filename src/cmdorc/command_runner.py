@@ -248,7 +248,7 @@ class CommandRunner:
 
                 task = asyncio.create_task(self._execute(cmd, result))
                 result.task = task
-                task.add_done_callback(lambda t: self._task_completed(cmd.name, result))
+                task.add_done_callback(lambda t, name=cmd.name, res=result: self._task_completed(name, res))
 
                 self._live_runs[cmd.name].append(result)
 
@@ -324,15 +324,21 @@ class CommandRunner:
                 logger.error(f"Error output from '{cmd.name}':\n{result.output}")
 
     def _task_completed(self, cmd_name: str, result: RunResult) -> None:
-        # Remove from live runs
-
+        # Validate state transition
         if result.state == RunState.RUNNING:
             raise ValueError(f"Command '{cmd_name}' ({result.run_id}) completed but result state is still RUNNING - should have been changed before calling _task_completed")
         
+        # Remove from live runs - if not found, this is a duplicate callback
+        initial_count = len(self._live_runs[cmd_name])
         self._live_runs[cmd_name] = [
             r for r in self._live_runs[cmd_name] if r.run_id != result.run_id
         ]
-
+        
+        if len(self._live_runs[cmd_name]) == initial_count:
+            # Run wasn't in live_runs, must be duplicate callback
+            logger.debug(f"Ignoring duplicate completion callback for '{cmd_name}' ({result.run_id})")
+            return
+        
         # Store in history (with retention)
         cfg = self._command_configs[cmd_name]
 

@@ -91,11 +91,14 @@ async def test_cancel_on_triggers_stops_running_command():
         await runner.trigger("start")
         assert await runner.wait_for_running("Cancelable", timeout=1.0)
         
+        # Give the subprocess mock time to actually start waiting
+        await asyncio.sleep(0.1)
+        
         # Fire cancel trigger
         await runner.trigger("stop")
         
-        # Should be cancelled
-        assert await runner.wait_for_cancelled("Cancelable", timeout=2.0)
+        # Should be cancelled - give it more time since subprocess needs to respond to kill
+        assert await runner.wait_for_cancelled("Cancelable", timeout=3.0)
         result = runner.get_result("Cancelable")
         assert result.state == RunState.CANCELLED
 
@@ -118,10 +121,13 @@ async def test_cancel_on_triggers_multiple_triggers():
         await runner.trigger("go")
         assert await runner.wait_for_running("Multi", timeout=1.0)
         
+        # Give the subprocess mock time to actually start waiting
+        await asyncio.sleep(0.1)
+        
         # Try the second cancel trigger
         await runner.trigger("stop2")
         
-        assert await runner.wait_for_cancelled("Multi", timeout=2.0)
+        assert await runner.wait_for_cancelled("Multi", timeout=3.0)
 
 
 @pytest.mark.asyncio
@@ -142,10 +148,13 @@ async def test_cancel_on_triggers_doesnt_restart(mock_success_proc):
         await runner.trigger("start")
         assert await runner.wait_for_running("NoRestart", timeout=1.0)
         
+        # Give the subprocess mock time to actually start waiting
+        await asyncio.sleep(0.1)
+        
         await runner.trigger("stop")
         
         # Should be cancelled, not restarted
-        assert await runner.wait_for_cancelled("NoRestart", timeout=2.0)
+        assert await runner.wait_for_cancelled("NoRestart", timeout=3.0)
         assert runner.get_status("NoRestart") == CommandStatus.CANCELLED
         assert len(runner.get_live_runs("NoRestart")) == 0
 
@@ -428,7 +437,11 @@ async def test_multiple_commands_same_trigger(mock_success_proc):
     
     with patch("asyncio.create_subprocess_shell", return_value=mock_success_proc):
         await runner.trigger("shared")
-        await asyncio.sleep(0.2)
+        
+        # Use wait_for_status instead of random sleep
+        assert await runner.wait_for_status("First", CommandStatus.SUCCESS, timeout=1.0)
+        assert await runner.wait_for_status("Second", CommandStatus.SUCCESS, timeout=1.0)
+        assert await runner.wait_for_status("Third", CommandStatus.SUCCESS, timeout=1.0)
         
         # All three should have run
         assert runner.get_status("First") == CommandStatus.SUCCESS
@@ -645,6 +658,67 @@ async def test_keep_history_exact_retention(mock_success_proc):
         
         # They should be the LAST 3 runs
         assert all(r.state == RunState.SUCCESS for r in history)
+
+
+# ============================================================================
+# TEST: Duplicate history prevention
+# ============================================================================
+
+@pytest.mark.asyncio
+async def test_no_duplicate_history_entries(mock_success_proc):
+    """Ensure _task_completed doesn't add duplicates to history."""
+    cfg = CommandConfig(
+        name="NoDup",
+        command="echo test",
+        triggers=["go"],
+        keep_history=10
+    )
+    runner = CommandRunner([cfg])
+    
+    with patch("asyncio.create_subprocess_shell", return_value=mock_success_proc):
+        await runner.trigger("go")
+        assert await runner.wait_for_status("NoDup", CommandStatus.SUCCESS, timeout=1.0)
+        
+        history = runner.get_history("NoDup")
+        run_ids = [r.run_id for r in history]
+        
+        # Should have exactly 1 entry
+        assert len(history) == 1, f"Expected 1 history entry, got {len(history)}"
+        
+        # All run_ids should be unique (no duplicates)
+        assert len(run_ids) == len(set(run_ids)), f"Found duplicate run_ids in history: {run_ids}"
+
+
+@pytest.mark.asyncio
+async def test_multiple_commands_no_cross_contamination(mock_success_proc):
+    """Multiple commands should not cause cross-contamination in history."""
+    configs = [
+        CommandConfig(name="A", command="echo a", triggers=["shared"], keep_history=5),
+        CommandConfig(name="B", command="echo b", triggers=["shared"], keep_history=5),
+        CommandConfig(name="C", command="echo c", triggers=["shared"], keep_history=5),
+    ]
+    runner = CommandRunner(configs)
+    
+    with patch("asyncio.create_subprocess_shell", return_value=mock_success_proc):
+        # Trigger all at once
+        await runner.trigger("shared")
+        
+        # Wait for all to complete
+        assert await runner.wait_for_status("A", CommandStatus.SUCCESS, timeout=1.0)
+        assert await runner.wait_for_status("B", CommandStatus.SUCCESS, timeout=1.0)
+        assert await runner.wait_for_status("C", CommandStatus.SUCCESS, timeout=1.0)
+        
+        # Each should have exactly 1 entry with unique run_ids
+        for name in ["A", "B", "C"]:
+            history = runner.get_history(name)
+            assert len(history) == 1, f"Command {name} should have 1 history entry, got {len(history)}"
+            
+            # Verify no duplicates within this command's history
+            run_ids = [r.run_id for r in history]
+            assert len(run_ids) == len(set(run_ids)), f"Command {name} has duplicate run_ids"
+            
+            # Verify the run_id matches the command name
+            assert history[0].command_name == name
 
 
 # ============================================================================
