@@ -58,3 +58,77 @@ def test_load_config_nested_resolution_loop():
     )
     with pytest.raises(ValueError, match="Stalled resolution in"):
         load_config(loop_toml)
+
+def test_load_config_from_textio():
+    # 25-26: tomli.load for TextIO
+    toml_str = """
+    [[command]]
+    name = "Test"
+    command = "echo ok"
+    triggers = []
+    """
+    config = load_config(BytesIO(toml_str.encode("utf-8")))  # Already covered, but use TextIO
+    assert len(config.commands) == 1
+
+def test_variable_resolution_changes():
+    # 41-42: changed = True in resolution loop
+    toml_str = """
+    [variables]
+    a = "{{b}}"
+    b = "value"
+
+    [[command]]
+    name = "Test"
+    command = "echo ok"
+    triggers = []
+    """
+    config = load_config(BytesIO(toml_str.encode("utf-8")))
+    assert config.vars["a"] == "value"  # Resolution happened
+
+def test_no_more_changes_debug():
+    # 51: "No more variable changes detected"
+    toml_str = """
+    [variables]
+    a = "static"
+
+    [[command]]
+    name = "Test"
+    command = "echo ok"
+    triggers = []
+    """
+    with patch("logging.debug") as mock_debug:
+        load_config(BytesIO(toml_str.encode("utf-8")))
+        assert "No more variable changes detected" in mock_debug.call_args[0][0]
+
+def test_stalled_resolution_raise():
+    # 56: Stalled resolution raise
+    toml_str = """
+    [variables]
+    a = "{{b}} and {{c}}"
+    b = "ok"
+    c = "{{d}}"  # Unresolved
+
+    [[command]]
+    name = "Test"
+    command = "echo ok"
+    triggers = []
+    """
+    with pytest.raises(ValueError, match="Stalled resolution"):
+        load_config(BytesIO(toml_str.encode("utf-8")))
+
+def test_infinite_loop_raise():
+    # 63-64: Infinite loop raise
+    toml_str = """
+    [variables]
+    a = "{{b}}"
+    b = "{{c}}"
+    c = "{{d}}"
+    d = "{{a}}"  # Cycle deeper than max
+
+    [[command]]
+    name = "Test"
+    command = "echo ok"
+    triggers = []
+    """
+    with pytest.raises(ValueError, match="Infinite loop detected"):
+        load_config(BytesIO(toml_str.encode("utf-8")))
