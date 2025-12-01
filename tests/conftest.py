@@ -2,9 +2,9 @@
 import sys
 import os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'src')))
-
-import pytest
 import asyncio
+from unittest.mock import AsyncMock, Mock
+import pytest
 from cmdorc.command_config import CommandConfig
 from cmdorc.runner_config import RunnerConfig
 from cmdorc.command_runner import CommandRunner
@@ -23,12 +23,14 @@ def sample_command_config():
         keep_history=3
     )
 
+
 @pytest.fixture
 def sample_runner_config(sample_command_config):
     return RunnerConfig(
         commands=[sample_command_config],
         vars={"message": "hello", "base_directory": "/tmp"}
     )
+
 
 @pytest.fixture
 def sample_runner(sample_command_config):

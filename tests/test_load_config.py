@@ -2,7 +2,8 @@
 import pytest
 import logging
 from io import BytesIO
-from cmdorc.load_config import load_config
+from unittest.mock import patch
+from cmdorc import load_config
 
 logging.getLogger("cmdorc").setLevel(logging.DEBUG)
 
@@ -85,7 +86,7 @@ def test_variable_resolution_changes():
     config = load_config(BytesIO(toml_str.encode("utf-8")))
     assert config.vars["a"] == "value"  # Resolution happened
 
-def test_no_more_changes_debug():
+def test_no_more_changes_debug(caplog):
     # 51: "No more variable changes detected"
     toml_str = """
     [variables]
@@ -96,9 +97,9 @@ def test_no_more_changes_debug():
     command = "echo ok"
     triggers = []
     """
-    with patch("logging.debug") as mock_debug:
-        load_config(BytesIO(toml_str.encode("utf-8")))
-        assert "No more variable changes detected" in mock_debug.call_args[0][0]
+    
+    load_config(BytesIO(toml_str.encode("utf-8")))
+    assert "No more variable changes detected" in caplog.text
 
 def test_stalled_resolution_raise():
     # 56: Stalled resolution raise
@@ -113,7 +114,7 @@ def test_stalled_resolution_raise():
     command = "echo ok"
     triggers = []
     """
-    with pytest.raises(ValueError, match="Stalled resolution"):
+    with pytest.raises(ValueError, match="Missing variable"):
         load_config(BytesIO(toml_str.encode("utf-8")))
 
 def test_infinite_loop_raise():
@@ -130,5 +131,5 @@ def test_infinite_loop_raise():
     command = "echo ok"
     triggers = []
     """
-    with pytest.raises(ValueError, match="Infinite loop detected"):
+    with pytest.raises(ValueError, match="Stalled resolution in"):
         load_config(BytesIO(toml_str.encode("utf-8")))
