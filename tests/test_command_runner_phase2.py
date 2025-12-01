@@ -801,3 +801,35 @@ async def test_command_with_no_triggers(mock_success_proc):
     await asyncio.sleep(0.1)
     
     assert runner.get_status("NoTriggers") == CommandStatus.IDLE
+
+@pytest.mark.asyncio
+async def test_misc_edge_cases():
+    runner = CommandRunner([CommandConfig(name="Bad", command="echo {{missing}}", triggers=["go"])])
+
+    # 1. Unresolvable template with strict=True
+    with pytest.raises(ValueError, match="Unresolved templates"):
+        runner.validate_templates(strict=True)
+
+    # 2. get_result with invalid run_id
+    with pytest.raises(ValueError, match="Run not found"):
+        runner.get_result("Bad", run_id="00000000-0000-0000-0000-000000000000")
+
+    # 3. Trigger non-existent event (covers debug log)
+    await runner.trigger("this-does-not-exist")
+
+    # 4. Register callback
+    called = asyncio.Event()
+    def cb(_): called.set()
+    runner.on_trigger("test", cb)
+    await runner.trigger("test")
+    await asyncio.wait_for(called.wait(), timeout=0.1)
+
+    # 5. Command that fails with stderr (covers error logging)
+    proc = AsyncMock()
+    proc.communicate.return_value = (b"", b"BOOM\n")
+    proc.returncode = 1
+    with patch("asyncio.create_subprocess_shell", return_value=proc):
+        cfg = CommandConfig(name="Fail", command="false", triggers=["fail"])
+        runner = CommandRunner([cfg])
+        await runner.trigger("fail")
+        await runner.wait_for_status("Fail", CommandStatus.FAILED, timeout=1.0)

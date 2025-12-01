@@ -84,6 +84,13 @@ async def test_failure(runner: CommandRunner):
 async def test_timeout(runner: CommandRunner):
     proc = AsyncMock()
     proc.returncode = None
+    killed = asyncio.Event()
+    
+    def kill_sync():
+        proc.returncode = -9
+        killed.set()
+
+    proc.kill = kill_sync
     proc.wait.side_effect = asyncio.TimeoutError
     proc.communicate.side_effect = lambda: asyncio.sleep(999)
 
