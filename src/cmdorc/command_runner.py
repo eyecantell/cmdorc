@@ -146,7 +146,9 @@ class CommandRunner:
         self._live_runs: Dict[str, List[RunResult]] = defaultdict(list)
         self._history: Dict[str, List[RunResult]] = defaultdict(list)
 
-        self._local = threading.local()
+        # async-safe cycle detection
+        self._active_triggers: set[str] = set()
+        self._trigger_lock = asyncio.Lock()
 
         logger.debug(f"CommandRunner initialized with {len(self._command_configs)} commands")
 
@@ -201,13 +203,12 @@ class CommandRunner:
         if not (self._trigger_map.get(event_name) or self._callbacks.get(event_name)):
             return
 
-        # Cycle detection
-        if not hasattr(self._local, "active_events"):
-            self._local.active_events = set()
-        if event_name in self._local.active_events:
-            logger.warning(f"Trigger cycle detected: {event_name}")
-            return
-        self._local.active_events.add(event_name)
+        # --- Async-safe cycle detection ---
+        async with self._trigger_lock:
+            if event_name in self._active_triggers:
+                logger.warning(f"Trigger cycle detected: {event_name}")
+                return
+            self._active_triggers.add(event_name)
 
         try:
             # ---- Command dispatch -------------------------------------------------
@@ -252,7 +253,8 @@ class CommandRunner:
                     logger.warning(f"Trigger callback error ({event_name}): {exc}")
 
         finally:
-            self._local.active_events.remove(event_name)
+            async with self._trigger_lock:
+                self._active_triggers.discard(event_name)
 
     # Execution
     async def _execute(self, cmd: CommandConfig, result: RunResult) -> None:
@@ -428,9 +430,9 @@ class CommandRunner:
         if isinstance(status, CommandStatus):
             status = [status]
 
-        start = asyncio.get_event_loop().time()
+        start = asyncio.get_running_loop().time()
         deadline = start + timeout
-        while asyncio.get_event_loop().time() < deadline:
+        while asyncio.get_running_loop().time() < deadline:
             current = self.get_status(name)
             if current in status:
                 logger.debug(f"Command '{name}' ({self.get_result(name).run_id if self.get_result(name) else 'unknown'}) reached status: {current} after {asyncio.get_event_loop().time() - start:.2f}s")
