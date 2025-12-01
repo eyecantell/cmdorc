@@ -13,6 +13,7 @@ from cmdorc.command_runner import CommandRunner, CommandStatus, RunState
 
 logging.getLogger("cmdorc").setLevel(logging.DEBUG)
 
+
 @pytest.fixture
 def echo_config() -> List[CommandConfig]:
     return [
@@ -46,7 +47,7 @@ async def test_nested_template_resolution():
     proc.returncode = 0
     with patch("asyncio.create_subprocess_shell", return_value=proc):
         await runner.trigger("run")
-        await asyncio.sleep(0.05)
+        assert await runner.wait_for_status("T", CommandStatus.SUCCESS, timeout=1.0)
     proc.communicate.assert_awaited_once()
 
 
@@ -55,8 +56,8 @@ async def test_template_cycle_detection():
     runner = CommandRunner([CommandConfig(name="Boom", command="{{a}}", triggers=["boom"])])
     runner.set_vars({"a": "{{b}}", "b": "{{a}}"})
     await runner.trigger("boom")
-    await asyncio.sleep(0.1)
-    assert runner.get_status("Boom") == CommandStatus.FAILED
+    assert await runner.wait_for_status("Boom", CommandStatus.FAILED, timeout=1.0)
+    assert "cycle" in runner.get_result("Boom").error.lower()
 
 
 @pytest.mark.asyncio
@@ -66,8 +67,7 @@ async def test_success(runner: CommandRunner):
     proc.returncode = 0
     with patch("asyncio.create_subprocess_shell", return_value=proc):
         await runner.trigger("go")
-        await asyncio.sleep(0.05)
-        assert runner.get_status("Echo") == CommandStatus.SUCCESS
+        assert await runner.wait_for_status("Echo", CommandStatus.SUCCESS, timeout=1.0)
 
 
 @pytest.mark.asyncio
@@ -77,8 +77,7 @@ async def test_failure(runner: CommandRunner):
     proc.returncode = 1
     with patch("asyncio.create_subprocess_shell", return_value=proc):
         await runner.trigger("go")
-        await asyncio.sleep(0.05)
-        assert runner.get_status("Echo") == CommandStatus.FAILED
+        assert await runner.wait_for_status("Echo", CommandStatus.FAILED, timeout=1.0)
 
 
 @pytest.mark.asyncio
@@ -90,9 +89,9 @@ async def test_timeout(runner: CommandRunner):
 
     with patch("asyncio.create_subprocess_shell", return_value=proc):
         await runner.trigger("go")
-        await asyncio.sleep(0.5)
-        assert runner.get_status("Echo") == CommandStatus.FAILED
+        assert await runner.wait_for_status("Echo", CommandStatus.FAILED, timeout=2.0)
         assert runner.get_result("Echo").error == "Timeout exceeded"
+
 
 @pytest.mark.asyncio
 async def test_cancel_and_restart_policy():
@@ -120,6 +119,7 @@ async def test_cancel_and_restart_policy():
     runner.cancel_all()
     await asyncio.sleep(0.1)
 
+
 @pytest.mark.asyncio
 async def test_trigger_cycle_detection():
     cfg = CommandConfig(
@@ -136,7 +136,9 @@ async def test_trigger_cycle_detection():
     with patch("asyncio.create_subprocess_shell", return_value=proc):
         with patch("logging.warning") as mock_warn:
             await runner.trigger("go")
-            await asyncio.sleep(0.5)  # first run → success → self-trigger → cycle warning
+            # First run succeeds → triggers itself → cycle detected
+            assert await runner.wait_for_status("Loop", CommandStatus.SUCCESS, timeout=1.0)
+            await asyncio.sleep(0.1)  # give cycle detection time
 
             assert mock_warn.called
             assert "cycle" in mock_warn.call_args[0][0].lower()
@@ -156,9 +158,8 @@ async def test_auto_trigger_chaining():
 
     with patch("asyncio.create_subprocess_shell", return_value=proc):
         await runner.trigger("begin")
-        await asyncio.sleep(0.3)
-        assert runner.get_status("A") == CommandStatus.SUCCESS
-        assert runner.get_status("B") == CommandStatus.SUCCESS
+        assert await runner.wait_for_status("A", CommandStatus.SUCCESS, timeout=1.0)
+        assert await runner.wait_for_status("B", CommandStatus.SUCCESS, timeout=1.0)
 
 
 @pytest.mark.asyncio
@@ -173,5 +174,5 @@ async def test_history_retention():
     with patch("asyncio.create_subprocess_shell", return_value=proc):
         for _ in range(5):
             await runner.trigger("run")
-            await asyncio.sleep(0.02)
+            assert await runner.wait_for_status("H", CommandStatus.SUCCESS, timeout=1.0)
         assert len(runner.get_history("H")) == 2
