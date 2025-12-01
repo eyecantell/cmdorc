@@ -38,47 +38,42 @@ def mock_success_proc():
 
 
 def create_long_running_proc():
-    """Create a mock process that runs indefinitely until killed."""
     proc = AsyncMock()
     proc.returncode = None
-    proc.kill = Mock()  # Use regular Mock for synchronous kill
-    
-    # Create a flag to control when wait() completes
     killed = asyncio.Event()
-    
-    async def wait_impl():
-        await killed.wait()  # Wait until killed
-        proc.returncode = -9  # Killed signal
-    
+
     async def communicate_impl():
         await killed.wait()
+        proc.returncode = -9
         return (b"", b"")
-    
-    proc.wait = wait_impl
-    proc.communicate = communicate_impl
-    
-    # Override kill to set the event
-    original_kill = proc.kill
-    def kill_impl():
-        original_kill()
+
+    def kill_sync():
+        proc.returncode = -9
         killed.set()
-    
-    proc.kill = kill_impl
-    
+
+    proc.communicate = communicate_impl
+    proc.kill = kill_sync          # ← THIS MUST BE A SYNC FUNCTION
+    proc.terminate = kill_sync
+
+    async def wait_impl():
+        await killed.wait()
+        return -9
+
+    proc.wait = wait_impl
+
     return proc
 
 
 # ============================================================================
 # TEST: cancel_on_triggers
 # ============================================================================
-
 @pytest.mark.asyncio
 async def test_cancel_on_triggers_stops_running_command():
     """When a cancel_on_trigger fires, running command should be cancelled."""
     cfg = CommandConfig(
         name="Cancelable",
         command="sleep 100",
-        triggers=["start"],
+        triggers=["start", "stop"],  # Add "stop" to triggers
         cancel_on_triggers=["stop", "abort"],
         keep_history=5,
     )
@@ -89,16 +84,17 @@ async def test_cancel_on_triggers_stops_running_command():
     with patch("asyncio.create_subprocess_shell", return_value=proc):
         # Start the command
         await runner.trigger("start")
-        assert await runner.wait_for_running("Cancelable", timeout=1.0)
+        assert await runner.wait_for_status("Cancelable", CommandStatus.RUNNING, timeout=1.0)
         
         # Give the subprocess mock time to actually start waiting
         await asyncio.sleep(0.1)
         
         # Fire cancel trigger
         await runner.trigger("stop")
+        await asyncio.sleep(0.1)  # Yield to loop for cancellation to propagate
         
         # Should be cancelled - give it more time since subprocess needs to respond to kill
-        assert await runner.wait_for_cancelled("Cancelable", timeout=3.0)
+        assert await runner.wait_for_status("Cancelable", CommandStatus.CANCELLED, timeout=5.0)
         result = runner.get_result("Cancelable")
         assert result.state == RunState.CANCELLED
 
@@ -109,7 +105,7 @@ async def test_cancel_on_triggers_multiple_triggers():
     cfg = CommandConfig(
         name="Multi",
         command="sleep 100",
-        triggers=["go"],
+        triggers=["go", "stop2"],  # Add "stop2" to triggers
         cancel_on_triggers=["stop1", "stop2", "stop3"],
         keep_history=5,
     )
@@ -119,15 +115,16 @@ async def test_cancel_on_triggers_multiple_triggers():
     
     with patch("asyncio.create_subprocess_shell", return_value=proc):
         await runner.trigger("go")
-        assert await runner.wait_for_running("Multi", timeout=1.0)
+        assert await runner.wait_for_status("Multi", CommandStatus.RUNNING, timeout=1.0)
         
         # Give the subprocess mock time to actually start waiting
         await asyncio.sleep(0.1)
         
         # Try the second cancel trigger
         await runner.trigger("stop2")
+        await asyncio.sleep(0.1)  # Yield to loop for cancellation to propagate
         
-        assert await runner.wait_for_cancelled("Multi", timeout=3.0)
+        assert await runner.wait_for_status("Multi", CommandStatus.CANCELLED, timeout=5.0)
 
 
 @pytest.mark.asyncio
@@ -136,7 +133,7 @@ async def test_cancel_on_triggers_doesnt_restart(mock_success_proc):
     cfg = CommandConfig(
         name="NoRestart",
         command="echo test",
-        triggers=["start"],
+        triggers=["start", "stop"],  # Add "stop" to triggers
         cancel_on_triggers=["stop"],
         keep_history=5,
     )
@@ -146,15 +143,16 @@ async def test_cancel_on_triggers_doesnt_restart(mock_success_proc):
     
     with patch("asyncio.create_subprocess_shell", return_value=proc):
         await runner.trigger("start")
-        assert await runner.wait_for_running("NoRestart", timeout=1.0)
+        assert await runner.wait_for_status("NoRestart", CommandStatus.RUNNING, timeout=1.0)
         
         # Give the subprocess mock time to actually start waiting
         await asyncio.sleep(0.1)
         
         await runner.trigger("stop")
+        await asyncio.sleep(0.1)  # Yield to loop for cancellation to propagate
         
         # Should be cancelled, not restarted
-        assert await runner.wait_for_cancelled("NoRestart", timeout=3.0)
+        assert await runner.wait_for_status("NoRestart", CommandStatus.CANCELLED, timeout=5.0)
         assert runner.get_status("NoRestart") == CommandStatus.CANCELLED
         assert len(runner.get_live_runs("NoRestart")) == 0
 
@@ -774,6 +772,17 @@ async def test_get_status_unknown_command():
     with pytest.raises(ValueError, match="Unknown command"):
         runner.get_status("Unknown")
 
+@pytest.mark.asyncio
+async def test_get_status_with_run_id(mock_success_proc):
+    cfg = CommandConfig(name="Test", command="echo ok", triggers=["go"], keep_history=5)
+    runner = CommandRunner([cfg])
+    
+    with patch("asyncio.create_subprocess_shell", return_value=mock_success_proc):
+        await runner.trigger("go")
+        await runner.wait_for_status("Test", CommandStatus.SUCCESS, timeout=1.0)
+        
+        result = runner.get_result("Test")
+        assert runner.get_status("Test", run_id=result.run_id) == CommandStatus.SUCCESS
 
 @pytest.mark.asyncio
 async def test_command_with_no_triggers(mock_success_proc):

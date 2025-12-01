@@ -197,7 +197,7 @@ class CommandRunner:
 
     # Core trigger dispatch
     async def trigger(self, event_name: str, _seen: Optional[set[str]] = None) -> None:
-        logger.debug(f"Trigger: {event_name}")
+        logger.debug(f"Trigger: '{event_name}'")
 
         if not (self._trigger_map.get(event_name) or self._callbacks.get(event_name)):
             return
@@ -219,6 +219,7 @@ class CommandRunner:
             # ---- Command dispatch -------------------------------------------------
             for cmd in self._trigger_map.get(event_name, []):
                 live = self._live_runs[cmd.name]
+                logger.debug(f"Evaluating command '{cmd.name}' for trigger '{event_name}': {len(live)} live runs")
 
                 # cancel_on_triggers
                 if event_name in cmd.cancel_on_triggers and live:
@@ -376,13 +377,20 @@ class CommandRunner:
                 run.cancel()
 
     # Queries
-    def get_status(self, name: str) -> CommandStatus:
-        """Current status of the command (running → last run state → idle)."""
+    def get_status(self, name: str, run_id: Optional[str] = None) -> CommandStatus:
+        """Current status of the command (running → last run state → idle) or a specific run if run_id provided."""
         if name not in self._command_configs:
             raise ValueError(f"Unknown command: {name}")
 
+        if run_id:
+            result = self.get_result(name, run_id)
+            if result is None:
+                raise ValueError(f"Run not found: {run_id}")
+            return CommandStatus(result.state.value)
+
         if self._live_runs[name]:
             return CommandStatus.RUNNING
+        
         if self._history[name]:
             return CommandStatus(self._history[name][-1].state.value)
         return CommandStatus.IDLE
