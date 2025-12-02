@@ -15,6 +15,7 @@ command = "pytest {{ tests_directory }}"         # tests_directory must be defin
 max_concurrent = 1                               # default: 1, use 0 for unlimited
 timeout_secs = 600                               # optional — kill after N seconds
 on_retrigger = "cancel_and_restart"             # default, or "ignore"
+keep_history = 1                                 # default: 1, how many past runs to keep
 ```
 
 ## Fields
@@ -26,8 +27,9 @@ on_retrigger = "cancel_and_restart"             # default, or "ignore"
 | `triggers`            | `list[str]`      | Yes       | —                        | Exact strings that cause this command to run when `runner.trigger(...)` is called. Must explicitly include its own `name` if you want manual/hotkey execution. |
 | `cancel_on_triggers`  | `list[str]`      | No        | `[]`                     | If any of these strings are triggered while the command is running → cancel it immediately. |
 | `max_concurrent`      | `int`            | No        | `1`                      | Maximum number of concurrent instances. `0` = unlimited. |
-| `timeout_secs`        | `int`            | No        | none                     | If set, automatically kill the process after this many seconds. |
+| `timeout_secs`        | `int`            | No        | `None`                   | If set, automatically kill the process after this many seconds. |
 | `on_retrigger`        | `str`            | No        | `"cancel_and_restart"`   | Behaviour when the command is triggered again while already running and `max_concurrent` is reached:<br>• `"cancel_and_restart"` → cancel existing run(s) and start fresh (default)<br>• `"ignore"` → silently skip the new request |
+| `keep_history`        | `int`            | No        | `1`                      | Number of past RunResult objects to keep. `0` = keep none (only latest via `get_result()`), `N` = keep last N runs. |
 
 ## Interaction Matrix (when a trigger arrives)
 
@@ -39,12 +41,17 @@ on_retrigger = "cancel_and_restart"             # default, or "ignore"
 
 ## Automatic Events (emitted on completion)
 
+These events are emitted automatically by the runner — no configuration needed.
+
 | Event                        | When it fires                                 |
 |------------------------------|-----------------------------------------------|
-| `command_success:<name>`     | Process exits with code 0 (or custom success) |
-| `command_failed:<name>`      | Process exits non-zero                        |
-| `command_finished:<name>`    | Process completed (success or failure)       |
+| `command_started:<name>`     | After command passes concurrency checks and begins execution |
+| `command_success:<name>`     | Process exits with code 0 (success) |
+| `command_failed:<name>`      | Process exits non-zero (failure) |
+| `command_finished:<name>`    | Process completed successfully or failed (not cancelled) |
 | `command_cancelled:<name>`   | Process was cancelled (manual or via `cancel_on_triggers`) |
+
+**Note**: `command_finished` is only emitted for success/failure states, not for cancelled commands.
 
 ## Examples
 
@@ -56,6 +63,7 @@ triggers = ["changes_applied", "Tests"]
 cancel_on_triggers = ["prompt_send"]
 command = "pytest {{ tests_directory }}"
 timeout_secs = 600
+keep_history = 5
 # max_concurrent and on_retrigger use defaults (1 + cancel_and_restart)
 
 # Expensive background check you don't want to spam
@@ -72,9 +80,21 @@ name = "LogEvent"
 triggers = ["webhook:deploy"]
 command = "curl -X POST https://logs.example.com/..."
 max_concurrent = 0               # unlimited parallelism
+
+# React to command lifecycle events
+[[command]]
+name = "Notify"
+triggers = ["command_started:Tests"]
+command = "notify-send 'Tests started'"
+
+[[command]]
+name = "Cleanup"
+triggers = ["command_finished:Tests"]
+command = "rm -rf /tmp/test_artifacts"
 ```
 
 ## Design Notes
 
 - No implicit runs — a command is only executed if its name (or any other string) is explicitly listed in `triggers`.
 - No `manual` magic string — manual execution is just `runner.trigger("CommandName")` after adding the name to its own `triggers`.
+- `keep_history` controls retention: `0` means no history (only latest result accessible), higher values retain more runs for debugging/analysis.

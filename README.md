@@ -6,23 +6,23 @@
 
 **cmdorc** is a lightweight, **async-first** Python library for running shell commands in response to string-based **triggers**. Built for developer tools, TUIs (like [VibeDir](https://github.com/yourusername/vibedir)), CI automation, or any app needing event-driven command orchestration.
 
-Zero external dependencies (pure stdlib + `tomli` for TOML). Predictable. Extensible. No magic.
+Zero external dependencies (pure stdlib + `tomli` for Python <3.11). Predictable. Extensible. No magic.
 
 Inspired by Make/npm scripts — but instead of file changes, you trigger workflows with **events** like `"lint"`, `"tests_passed"`, or `"deploy_ready"`.
 
 ## Features
 
 - **Trigger-Based Execution** — Fire any string event → run configured commands
-- **Auto-Events** — `command_success:Lint`, `command_failed:Tests`, etc.
+- **Auto-Events** — `command_started:Lint`, `command_success:Lint`, `command_failed:Tests`, etc.
 - **Full Async + Concurrency Control** — Non-blocking, cancellable, timeout-aware
 - **Smart Retrigger Policies** — `cancel_and_restart` or `ignore`
 - **Cancellation Triggers** — Auto-cancel commands on certain events
 - **Rich State Tracking** — Live runs, history, durations, output capture
 - **Template Variables** — `{{ base_directory }}`, nested resolution, runtime overrides
-- **TOML Config + Pydantic-like Validation** — Clear, declarative setup
+- **TOML Config + Validation** — Clear, declarative setup with validation
 - **Cycle Detection** — Prevents infinite trigger loops with clear warnings
 - **Frontend-Friendly** — Perfect for TUIs (Textual, Bubble Tea), status icons (Pending/Running/Success/Failure/Cancelled), logs
-- **Only one runtime dependency: `tomli` (TOML parser)**
+- **Minimal dependencies**: Only `tomli` for Python <3.11 (stdlib `tomllib` for 3.11+)
 - **Deterministic, Safe Template Resolution** with nested `{{var}}` support and cycle protection
 
 ## Installation
@@ -30,6 +30,8 @@ Inspired by Make/npm scripts — but instead of file changes, you trigger workfl
 ```bash
 pip install cmdorc
 ```
+
+Requires Python 3.10+
 
 ## Quick Start
 
@@ -97,10 +99,24 @@ asyncio.run(main())
 ### Triggers & Auto-Events
 
 - Any string can be a trigger: `"build"`, `"deploy"`, `"hotkey:f5"`
-- Special auto-triggers:
-  - `command_success:MyCommand`
-  - `command_failed:MyCommand`
-  - `command_cancelled:MyCommand`
+- Special auto-triggers (emitted automatically):
+  - `command_started:MyCommand` — Command begins execution
+  - `command_success:MyCommand` — Command exits with code 0
+  - `command_failed:MyCommand` — Command exits non-zero
+  - `command_finished:MyCommand` — Command completes (success or failure, not cancelled)
+  - `command_cancelled:MyCommand` — Command was cancelled
+
+### Lifecycle Example
+
+```python
+await runner.trigger("build")
+
+# If "build" triggers a command named "Compile":
+# 1. command_started:Compile    ← can trigger other commands
+# 2. ... subprocess runs ...
+# 3. command_success:Compile    ← triggers on success
+#    command_finished:Compile   ← always fires after success/failure
+```
 
 ### Cancellation
 
@@ -138,6 +154,7 @@ result.success        # bool or None
 result.output         # str (stdout + stderr)
 result.duration_str   # "1m 23s", "452ms", "1h 5m"
 result.trigger_event  # What triggered this run
+result.run_id         # Unique identifier for this execution
 ```
 
 ## Configuration
@@ -177,13 +194,13 @@ runner.validate_templates()                        # Find unresolved {{ vars }}
 
 | Version | Features |
 |-------|---------|
-| **v0.1** (current) | Core async runner, triggers, cancellation, TOML, history, cycle detection |
-| **v0.2** | Persistent results (`result_file`), better logging, `keep_last_n` |
+| **v0.1** (current) | Core async runner, triggers, cancellation, TOML, history, cycle detection, `command_started` |
+| **v0.2** | Persistent results (`result_file`), structured logging, configurable max_nested_depth |
 
 ## Why cmdorc?
 
-You’re building a TUI, VSCode extension, or LLM agent that says:  
-> “When the user saves → run formatter → then tests → show results live”
+You're building a TUI, VSCode extension, or LLM agent that says:  
+> "When the user saves → run formatter → then tests → show results live"
 
 `cmdorc` is the **battle-tested backend** that handles:
 - Async execution
@@ -193,7 +210,37 @@ You’re building a TUI, VSCode extension, or LLM agent that says:
 
 **Separate concerns**: Let your UI be beautiful. Let `cmdorc` handle the boring parts: async, cancellation, state, safety.
 
+## Advanced Features
+
+### Lifecycle Hooks with Callbacks
+
+```python
+runner.on_trigger("command_started:Tests", lambda _: ui.show_spinner())
+runner.on_trigger("command_finished:Tests", lambda _: ui.hide_spinner())
+```
+
+### Template Variables
+
+```python
+runner.set_vars({"env": "production", "region": "us-west-2"})
+# Now commands can use {{ env }} and {{ region }}
+```
+
+### History Retention
+
+```toml
+keep_history = 10  # Keep last 10 runs for debugging
+```
+
+```python
+history = runner.get_history("Tests")
+for run in history:
+    print(f"{run.run_id}: {run.state} in {run.duration_str}")
+```
+
 ---
 
 **Contributions welcome!**  
 See [CONTRIBUTING.md](CONTRIBUTING.md)
+
+**License**: MIT
