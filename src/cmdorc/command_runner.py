@@ -286,9 +286,11 @@ class CommandRunner:
     async def _execute(self, cmd: CommandConfig, result: RunResult) -> None:
         proc = None
         try:
+            # --- Resolve command template ---
             resolved_cmd = self._resolve_template(cmd.command)
             logger.debug(f"Executing '{cmd.name}': {resolved_cmd}")
 
+            # --- Start subprocess ---
             proc = await asyncio.create_subprocess_shell(
                 resolved_cmd,
                 stdout=asyncio.subprocess.PIPE,
@@ -296,39 +298,54 @@ class CommandRunner:
                 cwd=self.vars["base_directory"],
             )
 
+            # --- Communicate with timeout (this handles wait + I/O together) ---
             if cmd.timeout_secs:
-                await asyncio.wait_for(proc.wait(), timeout=cmd.timeout_secs)
+                try:
+                    stdout, stderr = await asyncio.wait_for(
+                        proc.communicate(),
+                        timeout=cmd.timeout_secs,
+                    )
+                except asyncio.TimeoutError:
+                    logger.info(
+                        f"Command '{cmd.name}' ({result.run_id}) timed out after "
+                        f"{cmd.timeout_secs}s"
+                    )
+                    result.mark_failed("Timeout exceeded")
 
-            stdout, stderr = await proc.communicate()
+                    # Kill process and wait for it to exit
+                    if proc.returncode is None:
+                        proc.kill()
+                        try:
+                            await proc.wait()
+                        except Exception:
+                            pass
+                    return
+            else:
+                stdout, stderr = await proc.communicate()
+
+            # --- Decode output safely ---
             result.output = (stdout + stderr).decode(errors="replace")
 
+            # --- Check exit code ---
             if proc.returncode != 0:
                 raise RuntimeError(f"Exit code {proc.returncode}")
 
             result.mark_success()
 
-        except asyncio.TimeoutError:
-            logger.info(f"Command '{cmd.name}' was cancelled ({result.run_id}) due to timeout")
-            result.mark_failed("Timeout exceeded")
-            if proc and proc.returncode is None:
-                proc.kill()
-                try:
-                    await proc.wait()  # swallow any error
-                except Exception:
-                    pass
-            return  # CRITICAL: skip communicate() entirely
-
-        # And replace the CancelledError block with this:
         except asyncio.CancelledError:
-            logger.info(f"Command '{cmd.name}' was cancelled ({result.run_id}) in async context")
+            logger.info(
+                f"Command '{cmd.name}' ({result.run_id}) was cancelled in async context"
+            )
             result.mark_cancelled()
+
             if proc and proc.returncode is None:
                 proc.kill()
                 try:
                     await proc.wait()
                 except Exception:
                     pass
-            # DO NOT re-raise – let the task finish cleanly
+
+            # Allow task to finish without re-raising
             return
 
         except Exception as exc:
@@ -336,8 +353,10 @@ class CommandRunner:
             result.mark_failed(str(exc))
 
         finally:
+            # Log stderr if failed or cancelled
             if result.state in (RunState.FAILED, RunState.CANCELLED) and result.output.strip():
                 logger.error(f"Error output from '{cmd.name}':\n{result.output}")
+
 
     def _task_completed(self, cmd_name: str, result: RunResult) -> None:
         # Validate state transition
