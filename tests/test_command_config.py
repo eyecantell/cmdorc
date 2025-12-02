@@ -1,6 +1,8 @@
 # tests/test_command_config.py
 import pytest
+
 from cmdorc.command_config import CommandConfig
+
 
 def test_command_config_init(sample_command_config):
     assert sample_command_config.name == "TestCmd"
@@ -12,18 +14,19 @@ def test_command_config_init(sample_command_config):
     assert sample_command_config.on_retrigger == "cancel_and_restart"
     assert sample_command_config.keep_history == 3
 
+
 def test_command_config_validation_errors():
     with pytest.raises(ValueError):
         CommandConfig(name="", command="echo", triggers=[])
-    
+
     with pytest.raises(ValueError):
         CommandConfig(name="Test", command=" ", triggers=[])
-    
+
     with pytest.raises(ValueError):
         CommandConfig(name="Test", command="echo", triggers=[], max_concurrent=-1)
-    
+
     with pytest.raises(ValueError):
         CommandConfig(name="Test", command="echo", triggers=[], timeout_secs=0)
-    
+
     with pytest.raises(ValueError, match="on_retrigger must be"):
         CommandConfig(name="Test", command="echo", triggers=[], on_retrigger="bad")

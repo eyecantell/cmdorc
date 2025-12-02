@@ -1,7 +1,9 @@
 # tests/test_command_runner/test_callbacks.py
-import pytest
 import asyncio
-from cmdorc.command_runner import CommandRunner, CommandConfig
+
+import pytest
+
+from cmdorc.command_runner import CommandConfig, CommandRunner
 
 
 @pytest.mark.asyncio
@@ -10,7 +12,9 @@ async def test_on_trigger_and_off_trigger():
     runner = CommandRunner([dummy_cfg])
 
     called = asyncio.Event()
-    def cb(_): called.set()
+
+    def cb(_):
+        called.set()
 
     runner.on_trigger("test", cb)
     await runner.trigger("test")

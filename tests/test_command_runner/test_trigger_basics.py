@@ -1,7 +1,9 @@
 # tests/test_command_runner/test_trigger_basics.py
-import pytest
 from unittest.mock import patch
-from cmdorc.command_runner import CommandRunner, CommandConfig, CommandStatus
+
+import pytest
+
+from cmdorc.command_runner import CommandConfig, CommandRunner, CommandStatus
 
 
 @pytest.mark.asyncio

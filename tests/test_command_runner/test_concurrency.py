@@ -1,7 +1,9 @@
 # tests/test_command_runner/test_concurrency.py
 import asyncio
-import pytest
 from unittest.mock import patch
+
+import pytest
+
 from cmdorc.command_runner import CommandConfig, CommandRunner, CommandStatus, RunState
 
 

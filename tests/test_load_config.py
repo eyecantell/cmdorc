@@ -1,11 +1,13 @@
 # tests/test_load_config.py
-import pytest
 import logging
 from io import BytesIO
-from unittest.mock import patch
+
+import pytest
+
 from cmdorc import load_config
 
 logging.getLogger("cmdorc").setLevel(logging.DEBUG)
+
 
 @pytest.fixture
 def sample_toml():
@@ -44,9 +46,10 @@ def test_load_config_missing_sections():
     with pytest.raises(ValueError, match="At least one.*required"):
         load_config(empty)
 
+
 def test_load_config_nested_resolution_loop():
     loop_toml = BytesIO(
-        """
+        b"""
     [variables]
     a = "{{b}}"
     b = "{{c}}"
@@ -55,10 +58,11 @@ def test_load_config_nested_resolution_loop():
     name = "Test"
     command = "echo ok"
     triggers = []
-    """.encode()
+    """
     )
     with pytest.raises(ValueError, match="Stalled resolution in"):
         load_config(loop_toml)
+
 
 def test_load_config_from_textio():
     # 25-26: tomli.load for TextIO
@@ -70,6 +74,7 @@ def test_load_config_from_textio():
     """
     config = load_config(BytesIO(toml_str.encode("utf-8")))  # Already covered, but use TextIO
     assert len(config.commands) == 1
+
 
 def test_variable_resolution_changes():
     # 41-42: changed = True in resolution loop
@@ -86,6 +91,7 @@ def test_variable_resolution_changes():
     config = load_config(BytesIO(toml_str.encode("utf-8")))
     assert config.vars["a"] == "value"  # Resolution happened
 
+
 def test_no_more_changes_debug(caplog):
     # 51: "No more variable changes detected"
     toml_str = """
@@ -97,9 +103,10 @@ def test_no_more_changes_debug(caplog):
     command = "echo ok"
     triggers = []
     """
-    
+
     load_config(BytesIO(toml_str.encode("utf-8")))
     assert "No more variable changes detected" in caplog.text
+
 
 def test_stalled_resolution_raise():
     # 56: Stalled resolution raise
@@ -116,6 +123,7 @@ def test_stalled_resolution_raise():
     """
     with pytest.raises(ValueError, match="Missing variable"):
         load_config(BytesIO(toml_str.encode("utf-8")))
+
 
 def test_infinite_loop_raise():
     # 63-64: Infinite loop raise

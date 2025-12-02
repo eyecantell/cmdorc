@@ -1,4 +1,5 @@
 name: CI
+
 on:
   push:
     branches: [main]
@@ -8,9 +9,23 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
+      fail-fast: false
+
+    name: Python ${{ matrix.python-version }}
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
 
       - name: Install PDM
         run: pipx install pdm
@@ -18,10 +33,17 @@ jobs:
       - name: Install dependencies
         run: pdm install -G test
 
-      - name: Run tests with coverage
-        run: pdm run pytest --cov=src/vibedir --cov-report=xml
+      - name: Lint with Ruff
+        run: pdm run ruff check src tests
 
-      - name: Upload coverage
+      - name: Format check
+        run: pdm run ruff format --check src tests
+
+      - name: Run tests with coverage
+        run: pdm run pytest --cov=cmdorc --cov-report=xml
+
+      - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
         with:
           files: ./coverage.xml
+          fail_ci_if_error: true

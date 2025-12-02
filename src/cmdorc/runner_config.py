@@ -1,6 +1,7 @@
 # cmdorc/runner_config.py
 from dataclasses import dataclass, field
 from typing import Dict, List
+
 from .command_config import CommandConfig
 
 
@@ -21,5 +22,5 @@ class RunnerConfig:
     """
 
     def __post_init__(self) -> None:
-            if not self.commands:
-                raise ValueError("At least one command is required")
+        if not self.commands:
+            raise ValueError("At least one command is required")

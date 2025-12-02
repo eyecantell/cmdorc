@@ -1,9 +1,11 @@
 # tests/test_command_runner/test_edge_cases.py
-import pytest
-import logging
 import asyncio
+import logging
 from unittest.mock import patch
-from cmdorc.command_runner import CommandRunner, CommandConfig, RunResult, RunState, CommandStatus
+
+import pytest
+
+from cmdorc.command_runner import CommandConfig, CommandRunner, CommandStatus, RunResult, RunState
 
 
 @pytest.mark.asyncio

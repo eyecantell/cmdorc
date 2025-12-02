@@ -1,12 +1,16 @@
 # tests/test_command_runner/test_templates.py
+from unittest.mock import AsyncMock, patch
+
 import pytest
-from unittest.mock import patch, AsyncMock
-from cmdorc.command_runner import CommandRunner, CommandConfig, CommandStatus
+
+from cmdorc.command_runner import CommandConfig, CommandRunner, CommandStatus
 
 
 @pytest.mark.asyncio
 async def test_nested_template_resolution():
-    runner = CommandRunner([CommandConfig(name="T", command="cd {{dir}} && ls {{sub}}", triggers=["run"])])
+    runner = CommandRunner([
+        CommandConfig(name="T", command="cd {{dir}} && ls {{sub}}", triggers=["run"])
+    ])
     runner.set_vars({"base": "/home", "dir": "{{base}}/proj", "sub": "src"})
     proc = AsyncMock()
     proc.communicate.return_value = (b"", b"")

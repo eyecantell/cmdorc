@@ -1,7 +1,9 @@
 # tests/test_command_runner/test_status_and_queries.py
-import pytest
 from unittest.mock import patch
-from cmdorc.command_runner import CommandRunner, CommandConfig, CommandStatus
+
+import pytest
+
+from cmdorc.command_runner import CommandConfig, CommandRunner, CommandStatus
 
 
 @pytest.mark.asyncio
@@ -35,7 +37,7 @@ async def test_wait_for_helpers(create_long_running_proc):
     with patch("asyncio.create_subprocess_shell", return_value=proc):
         await runner.trigger("start")
         assert await runner.wait_for_running("Wait", timeout=1.0)
-        
+
         # Test error case
         with pytest.raises(ValueError, match="Unknown command: NonExistent"):
             await runner.wait_for_idle("NonExistent", timeout=0.1)

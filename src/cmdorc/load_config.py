@@ -1,22 +1,31 @@
 # src/cmdorc/load_config.py
-import tomli
+from __future__ import annotations
+
 import logging
-from typing import Dict, BinaryIO, TextIO
+from typing import BinaryIO, Dict, TextIO
+
+try:
+    import tomllib as tomli  # Python 3.11+
+except ImportError:
+    import tomli  # <3.11
+
 from pathlib import Path
-from .runner_config import RunnerConfig
+
 from .command_config import CommandConfig
+from .runner_config import RunnerConfig
 
 logger = logging.getLogger(__name__)
+
 
 def load_config(path: str | Path | BinaryIO | TextIO) -> RunnerConfig:
     """
     Load and validate a TOML config file into a RunnerConfig.
-    
+
     - Parses the entire TOML.
     - Validates and creates CommandConfig objects for [[command]] sections.
     - Extracts [variables] as defaults (optional).
     - Performs simple nested resolution for {{ }} in vars (up to 5 levels to prevent loops).
-    
+
     Raises ValueError on invalid data or missing required fields.
     """
     if hasattr(path, "read"):
@@ -24,7 +33,7 @@ def load_config(path: str | Path | BinaryIO | TextIO) -> RunnerConfig:
     else:
         with open(path, "rb") as f:
             data = tomli.load(f)
-    
+
     # Extract and resolve [variables] (global defaults)
     vars_dict: Dict[str, str] = data.get("variables", {}).copy()
 
@@ -40,21 +49,23 @@ def load_config(path: str | Path | BinaryIO | TextIO) -> RunnerConfig:
                     changed = True
             except KeyError as e:
                 raise ValueError(f"Missing variable in [variables].{key}: {e}")
-            
+
         if not changed:
             logger.debug("No more variable changes detected; resolution complete.")
             for key, value in vars_dict.items():
-                if '{' in value and '}' in value:
-                    raise ValueError(f"Stalled resolution in [variables].{key}: unresolved placeholders remain in '{value}'")
+                if "{" in value and "}" in value:
+                    raise ValueError(
+                        f"Stalled resolution in [variables].{key}: unresolved placeholders remain in '{value}'"
+                    )
             break
     else:
         raise ValueError("Infinite loop detected in [variables] resolution")
-    
+
     # Extract and validate [[command]] array
     command_data = data.get("command", [])
     if not isinstance(command_data, list):
         raise ValueError("[[command]] must be an array of tables")
-    
+
     commands = []
     for cmd_dict in command_data:
         try:
@@ -62,8 +73,8 @@ def load_config(path: str | Path | BinaryIO | TextIO) -> RunnerConfig:
             commands.append(cmd)
         except TypeError as e:
             raise ValueError(f"Invalid config in [[command]]: {e}")
-    
+
     if not commands:
         raise ValueError("At least one [[command]] is required")
-    
+
     return RunnerConfig(commands=commands, vars=vars_dict)

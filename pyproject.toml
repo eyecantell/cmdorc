@@ -1,39 +1,53 @@
 [project]
 name = "cmdorc"
 version = "0.1.0"
-description = "Lightweight, async-first command orchestrator using trigger strings."
+description = "Async-first, trigger-driven shell command orchestrator for TUIs and agents"
 readme = "README.md"
-authors = [{name = "eyecantell", email = "paul@pneuma.solutions"}]
-license = {text = "MIT"}
-classifiers = [
-    "Programming Language :: Python :: 3.9",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
-    "Programming Language :: Python :: 3.12",
-    "License :: OSI Approved :: MIT License",
-    "Operating System :: OS Independent",
-    "Intended Audience :: Developers",
-    "Topic :: Software Development :: Libraries :: Python Modules",
-    "Topic :: Utilities",
-    "Development Status :: 4 - Beta",
-]
-keywords = [
-    "command line",
-    "orchestration",
-]
+authors = [{ name = "eyecantell", email = "paul@pneuma.solutions" }]
+license = { text = "MIT" }
 requires-python = ">=3.9"
+keywords = [
+  "async",
+  "orchestration",
+  "tui",
+  "command-runner",
+  "automation",
+  "triggers",
+  "devtools",
+]
+
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+  "Intended Audience :: Developers",
+  "Topic :: Software Development :: Libraries :: Python Modules",
+  "Topic :: Utilities",
+  "Development Status :: 4 - Beta",
+  "Typing :: Typed",
+]
+
 dependencies = [
-    "tomli>=2.0.1; python_version < '3.11'",
+  # tomli only needed on <3.11 — stdlib has tomllib
+  "tomli>=2.3.0",
 ]
 
 [project.optional-dependencies]
 test = [
-    "pytest>=7.4",
-    "pytest-asyncio>=0.21",
-    "pytest-cov>=4.1",
+    "pytest>=8.4.2",
+    "pytest-asyncio>=1.2.0",
+    "pytest-cov>=7.0.0",
+    "ruff>=0.14.7",
 ]
 
 [project.urls]
+Homepage = "https://github.com/eyecantell/cmdorc"
 Repository = "https://github.com/eyecantell/cmdorc"
 Issues = "https://github.com/eyecantell/cmdorc/issues"
 Documentation = "https://github.com/eyecantell/cmdorc#readme"
@@ -43,36 +57,37 @@ requires = ["pdm-backend"]
 build-backend = "pdm.backend"
 
 [tool.pdm]
-distribution = true
+source-includes = ["tests/", "src/cmdorc/"]
 package-dir = "src"
-includes = ["src/cmdorc"]
+distribution = true
 
 [tool.pdm.dev-dependencies]
 test = [
-    "pytest>=7.4",
-    "pytest-asyncio>=0.21",
-    "pytest-cov>=4.1",
+  "pytest>=8.0",
+  "pytest-asyncio>=0.23",
+  "pytest-cov>=5.0",
+  "ruff>=0.6.0",
 ]
 
 [tool.ruff]
-line-length = 120
+src = ["src"]
+line-length = 100
 target-version = "py39"
-select = [
-    "E",  # pycodestyle errors
-    "W",  # pycodestyle warnings
-    "F",  # pyflakes
-    "I",  # isort
-    "B",  # flake8-bugbear
-    "C4", # flake8-comprehensions
-    "T20", # flake8-print
-]
-ignore = [
-    "E501", # Line length handled by ruff formatter
-]
+
+[tool.ruff.format]
+preview = true
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "B", "C4", "T20", "UP"]
+ignore = ["E501"]  # Let formatter handle line length
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S101"]  # Allow assert in tests
 
 [tool.pytest.ini_options]
-addopts = "--cov=src/cmdorc --cov-report=term-missing --cov-report=html -v"
+addopts = "-ra -v --cov=cmdorc --cov-report=term-missing --cov-report=html"
 testpaths = ["tests"]
 asyncio_mode = "auto"
-asyncio_default_fixture_loop_scope = "function"
-markers = ["asyncio: mark test as async"]
+markers = [
+  "asyncio: mark test as async",
+]

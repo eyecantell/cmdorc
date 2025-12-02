@@ -1,6 +1,8 @@
 # tests/test_command_runner/test_history.py
-import pytest
 from unittest.mock import patch
+
+import pytest
+
 from cmdorc.command_runner import CommandConfig, CommandRunner, CommandStatus
 
 

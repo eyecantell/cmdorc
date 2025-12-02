@@ -1,7 +1,9 @@
 # tests/test_command_runner/conftest.py
-import pytest
-from unittest.mock import AsyncMock, Mock
 import asyncio
+from unittest.mock import AsyncMock, Mock
+
+import pytest
+
 
 @pytest.fixture
 def create_long_running_proc():
