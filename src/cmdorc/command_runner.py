@@ -12,9 +12,8 @@ from enum import Enum
 from typing import Callable
 
 from .command_config import CommandConfig
-from .runner_config import RunnerConfig
 from .load_config import resolve_double_brace_vars
-
+from .runner_config import RunnerConfig
 
 logger = logging.getLogger(__name__)
 
@@ -189,7 +188,6 @@ class CommandRunner:
             f"while resolving template: {template}"
         )
 
-
     # Trigger registration
     def on_trigger(self, trigger_name: str, callback: Callable[[dict | None], None]):
         logger.debug(f"Registering callback for trigger: '{trigger_name}'")
@@ -329,9 +327,7 @@ class CommandRunner:
             result.mark_success()
 
         except asyncio.CancelledError:
-            logger.info(
-                f"Command '{cmd.name}' ({result.run_id}) was cancelled in async context"
-            )
+            logger.info(f"Command '{cmd.name}' ({result.run_id}) was cancelled in async context")
             result.output = await self._read_partial_output(proc)
             result.mark_cancelled()
             await self._terminate_process(proc)
@@ -345,7 +341,6 @@ class CommandRunner:
             # Log stderr if failed or cancelled
             if result.state in (RunState.FAILED, RunState.CANCELLED) and result.output.strip():
                 logger.error(f"Error output from '{cmd.name}':\n{result.output}")
-
 
     def _task_completed(self, cmd_name: str, result: RunResult) -> None:
         # Validate state transition
@@ -445,9 +440,13 @@ class CommandRunner:
         return None
 
     def get_history(self, name: str) -> list[RunResult]:
+        if name not in self._command_configs:
+            raise ValueError(f"Unknown command: {name}")
         return self._history[name].copy()
 
     def get_live_runs(self, name: str) -> list[RunResult]:
+        if name not in self._command_configs:
+            raise ValueError(f"Unknown command: {name}")
         return self._live_runs[name].copy()
 
     # Introspection
@@ -533,7 +532,6 @@ class CommandRunner:
     async def wait_for_cancelled(self, name: str, timeout: float = 5.0) -> bool:
         return await self.wait_for_status(name, CommandStatus.CANCELLED, timeout)
 
-
     async def _terminate_process(
         self,
         proc: asyncio.subprocess.Process,
@@ -568,7 +566,6 @@ class CommandRunner:
             await proc.wait()
         except Exception:
             pass
-
 
     async def _read_partial_output(self, proc):
         out = b""

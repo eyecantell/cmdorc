@@ -1,8 +1,9 @@
 # tests/test_load_config.py
 
+import io
 import logging
 from io import BytesIO
-import io
+
 import pytest
 
 from cmdorc import load_config

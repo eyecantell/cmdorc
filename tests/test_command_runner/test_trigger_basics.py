@@ -13,6 +13,9 @@ async def test_success(mock_success_proc):
 
     with patch("asyncio.create_subprocess_shell", return_value=mock_success_proc):
         await runner.trigger("go")
+        live_runs = runner.get_live_runs("Echo")
+        if live_runs:
+            live_runs[0]._seen = None  # Force None to cover 'else' branch
         assert await runner.wait_for_status("Echo", CommandStatus.SUCCESS, timeout=1.0)
 
 
@@ -38,15 +41,3 @@ async def test_auto_trigger_chaining(mock_success_proc):
         await runner.trigger("begin")
         assert await runner.wait_for_status("A", CommandStatus.SUCCESS, timeout=1.0)
         assert await runner.wait_for_status("B", CommandStatus.SUCCESS, timeout=1.0)
-
-@pytest.mark.asyncio
-async def test_success(mock_success_proc):
-    cfg = CommandConfig(name="Echo", command="echo hello", triggers=["go"])
-    runner = CommandRunner([cfg])
-
-    with patch("asyncio.create_subprocess_shell", return_value=mock_success_proc):
-        await runner.trigger("go")
-        live_runs = runner.get_live_runs("Echo")
-        if live_runs:
-            live_runs[0]._seen = None  # Force None to cover 'else' branch
-        assert await runner.wait_for_status("Echo", CommandStatus.SUCCESS, timeout=1.0)

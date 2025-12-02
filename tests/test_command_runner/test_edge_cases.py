@@ -50,4 +50,3 @@ async def test_error_output_logged_on_failure(mock_failure_proc):
     with patch("asyncio.create_subprocess_shell", return_value=mock_failure_proc):
         await runner.trigger("go")
         await runner.wait_for_status("Err", CommandStatus.FAILED, timeout=1.0)
-

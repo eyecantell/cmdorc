@@ -25,4 +25,3 @@ async def test_on_trigger_and_off_trigger():
     await runner.trigger("test")
     with pytest.raises(asyncio.TimeoutError):
         await asyncio.wait_for(called.wait(), timeout=0.1)
-

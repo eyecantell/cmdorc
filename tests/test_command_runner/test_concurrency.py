@@ -39,6 +39,7 @@ async def test_cancel_and_restart_policy(create_long_running_proc):
         cancelled_runs = [r for r in history if r.state == RunState.CANCELLED]
         assert len(cancelled_runs) >= 1
 
+
 @pytest.mark.asyncio
 async def test_ignore_retrigger_policy(create_long_running_proc):
     cfg = CommandConfig(

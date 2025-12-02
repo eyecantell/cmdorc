@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import BinaryIO, TextIO
 from pathlib import Path
+from typing import BinaryIO, TextIO
 
 try:
     import tomllib as tomli  # Python 3.11+
@@ -54,7 +54,9 @@ def resolve_double_brace_vars(value: str, vars_dict: dict[str, str], *, max_dept
 
     # If still unresolved, we hit a cycle or unresolvable nested structure
     if VAR_PATTERN.search(value):
-        raise ValueError(f"Unresolved nested variables remain in '{value}' after {max_depth} passes")
+        raise ValueError(
+            f"Unresolved nested variables remain in '{value}' after {max_depth} passes"
+        )
 
     return value
 

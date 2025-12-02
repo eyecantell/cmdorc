@@ -93,6 +93,7 @@ async def test_get_result_returns_none_when_never_run():
     result = runner.get_result("Never")
     assert result is None
 
+
 @pytest.mark.asyncio
 async def test_get_result_returns_live_run_first(mock_success_proc):
     cfg = CommandConfig(name="Live", command="sleep 1", triggers=["go"], keep_history=5)
@@ -261,6 +262,7 @@ def test_cancel_does_nothing_when_task_done():
     result.task.done.return_value = True
     result.cancel()  # Should do nothing, no error/warning
     result.task.cancel.assert_not_called()  # Verify no call
+
 
 @pytest.mark.asyncio
 async def test_runresult_repr():
