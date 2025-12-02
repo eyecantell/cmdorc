@@ -93,7 +93,7 @@ async def test_template_recursion_depth_exceeded():
         runner.add_var(f"v{i}", f"{{{{v{i + 1}}}}}")
     runner.add_var("v15", "final")
 
-    with pytest.raises(RecursionError, match="max template nesting depth"):
+    with pytest.raises(ValueError, match="Unresolved nested variables remain"):
         runner._resolve_template("{{v0}}")
 
 

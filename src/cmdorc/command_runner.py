@@ -13,6 +13,8 @@ from typing import Callable
 
 from .command_config import CommandConfig
 from .runner_config import RunnerConfig
+from .load_config import resolve_double_brace_vars
+
 
 logger = logging.getLogger(__name__)
 
@@ -119,7 +121,8 @@ class RunResult:
         self.end_time = datetime.datetime.now()
 
     def __repr__(self) -> str:
-        dur = f"{self.duration_secs:.2f}s" if self.duration_secs else "–"
+        dur = f"{self.duration_secs:.2f}s" if self.duration_secs is not None else "–"
+
         return (
             f"RunResult(id={self.run_id[:8]}, cmd='{self.command_name}', "
             f"state={self.state}, dur={dur}, success={self.success})"
@@ -170,29 +173,22 @@ class CommandRunner:
         return mapping
 
     def _resolve_template(self, template: str, *, max_depth: int = 10) -> str:
-        """Resolve nested {{var}} references with cycle protection."""
+        """
+        Resolve double-brace {{ var }} templates using the same logic as load_config.
+        Supports nested replacements up to `max_depth` to avoid infinite loops.
+        """
         current = template
-        seen = set()
-
         for _ in range(max_depth):
-            if current in seen:
-                raise RecursionError(f"Template resolution cycle detected: {template}")
-            seen.add(current)
+            new = resolve_double_brace_vars(current, self.vars, max_depth=max_depth)
+            if new == current:
+                return new
+            current = new
 
-            try:
-                resolved = current.format_map(self.vars)
-            except KeyError as e:
-                raise KeyError(
-                    f"Unresolvable variable '{e.args[0]}' in template: {template}"
-                ) from None
+        raise RecursionError(
+            f"Exceeded max template expansion depth ({max_depth}) "
+            f"while resolving template: {template}"
+        )
 
-            if resolved == current:
-                if current != template:
-                    logger.debug(f"Template resolved: {template} -> {resolved}")
-                return resolved
-            current = resolved
-
-        raise RecursionError(f"Exceeded max template nesting depth ({max_depth})")
 
     # Trigger registration
     def on_trigger(self, trigger_name: str, callback: Callable[[dict | None], None]):

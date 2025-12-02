@@ -26,11 +26,11 @@ async def test_template_cycle_detection():
     runner.set_vars({"a": "{{b}}", "b": "{{a}}"})
     await runner.trigger("boom")
     assert await runner.wait_for_status("Boom", CommandStatus.FAILED, timeout=1.0)
-    assert "cycle" in runner.get_result("Boom").error.lower()
+    assert "unresolved nested variables remain" in runner.get_result("Boom").error.lower()
 
 
 def test_unresolvable_template_raises_keyerror():
     dummy_cfg = CommandConfig(name="Dummy", command="echo ok", triggers=[])
     runner = CommandRunner([dummy_cfg])
-    with pytest.raises(KeyError):
+    with pytest.raises(ValueError):
         runner._resolve_template("hello {{missing}}")
