@@ -112,7 +112,7 @@ class RunResult:
 
     def mark_cancelled(self) -> None:
         self.state = RunState.CANCELLED
-        self.success = False
+        self.success = None
         self.error = "Command was cancelled"
         self._finalize()
         logger.debug(f"Command '{self.command_name}' ({self.run_id}) cancelled at {self.end_time}")
@@ -149,7 +149,7 @@ class CommandRunner:
         self._trigger_map = self._build_trigger_map()
         self._cancel_trigger_map = self._build_cancel_trigger_map()
 
-        self._callbacks: dict[str, list[Callable[[dict] | None, None]]] = defaultdict(list)
+        self._callbacks: dict[str, list[Callable[[dict | None], None]]] = defaultdict(list)
 
         self._live_runs: dict[str, list[RunResult]] = defaultdict(list)
         self._history: dict[str, list[RunResult]] = defaultdict(list)
@@ -313,12 +313,8 @@ class CommandRunner:
                     result.mark_failed("Timeout exceeded")
 
                     # Kill process and wait for it to exit
-                    if proc.returncode is None:
-                        proc.kill()
-                        try:
-                            await proc.wait()
-                        except Exception:
-                            pass
+                    result.output = await self._read_partial_output(proc)
+                    await self._terminate_process(proc)
                     return
             else:
                 stdout, stderr = await proc.communicate()
@@ -336,38 +332,9 @@ class CommandRunner:
             logger.info(
                 f"Command '{cmd.name}' ({result.run_id}) was cancelled in async context"
             )
-            # Partial capture if any stdout available
-            out = b""
-            err = b""
-            try:
-                if proc and proc.stdout:
-                    out = await proc.stdout.read()
-                if proc and proc.stderr:
-                    err = await proc.stderr.read()
-            except Exception:
-                pass
-
-            if out or err:
-                try:
-                    result.output = (out + err).decode(errors="replace")
-                except Exception:
-                    result.output = ""
-
+            result.output = await self._read_partial_output(proc)
             result.mark_cancelled()
-            if proc and proc.returncode is None:
-                try:
-                    proc.terminate()
-                    await asyncio.sleep(0.2)
-                except Exception:
-                    pass
-                if proc.returncode is None:
-                    proc.kill()
-                try:
-                    await proc.wait()
-                except Exception:
-                    pass
-
-            # Allow task to finish without re-raising
+            await self._terminate_process(proc)
             return
 
         except Exception as exc:
@@ -565,3 +532,53 @@ class CommandRunner:
 
     async def wait_for_cancelled(self, name: str, timeout: float = 5.0) -> bool:
         return await self.wait_for_status(name, CommandStatus.CANCELLED, timeout)
+
+
+    async def _terminate_process(
+        self,
+        proc: asyncio.subprocess.Process,
+        *,
+        grace: float = 0.2,
+    ) -> None:
+        """
+        Gracefully terminate a subprocess:
+        - send SIGTERM
+        - wait `grace` seconds
+        - if still alive, send SIGKILL
+        - always wait for the process to exit
+        Never raises.
+        """
+        if proc is None:
+            return
+
+        try:
+            if proc.returncode is None:
+                proc.terminate()
+                await asyncio.sleep(grace)
+        except Exception:
+            pass
+
+        try:
+            if proc.returncode is None:
+                proc.kill()
+        except Exception:
+            pass
+
+        try:
+            await proc.wait()
+        except Exception:
+            pass
+
+
+    async def _read_partial_output(self, proc):
+        out = b""
+        err = b""
+        try:
+            if proc and proc.stdout:
+                out = await proc.stdout.read()
+            if proc and proc.stderr:
+                err = await proc.stderr.read()
+        except Exception:
+            pass
+
+        return (out + err).decode(errors="replace")
