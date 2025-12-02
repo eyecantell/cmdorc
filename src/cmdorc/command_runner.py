@@ -143,7 +143,10 @@ class CommandRunner:
             "base_directory", os.getcwd()
         )
 
+        # Build both trigger maps
         self._trigger_map = self._build_trigger_map()
+        self._cancel_trigger_map = self._build_cancel_trigger_map()
+        
         self._callbacks: Dict[str, List[Callable[[Optional[Dict]], None]]] = defaultdict(list)
 
         self._live_runs: Dict[str, List[RunResult]] = defaultdict(list)
@@ -156,6 +159,14 @@ class CommandRunner:
         mapping: Dict[str, List[CommandConfig]] = defaultdict(list)
         for cmd in self._command_configs.values():
             for t in cmd.triggers:
+                mapping[t].append(cmd)
+        return mapping
+
+    def _build_cancel_trigger_map(self) -> Dict[str, List[CommandConfig]]:
+        """Build map of trigger -> commands to cancel when that trigger fires."""
+        mapping: Dict[str, List[CommandConfig]] = defaultdict(list)
+        for cmd in self._command_configs.values():
+            for t in cmd.cancel_on_triggers:
                 mapping[t].append(cmd)
         return mapping
 
@@ -199,7 +210,10 @@ class CommandRunner:
     async def trigger(self, event_name: str, _seen: Optional[set[str]] = None) -> None:
         logger.debug(f"Trigger: '{event_name}'")
 
-        if not (self._trigger_map.get(event_name) or self._callbacks.get(event_name)):
+        # Check if there's anything to do
+        if not (self._trigger_map.get(event_name) 
+                or self._cancel_trigger_map.get(event_name) 
+                or self._callbacks.get(event_name)):
             return
 
         # === True cycle detection across chained and auto-triggered events ===
@@ -216,19 +230,20 @@ class CommandRunner:
         _seen.add(event_name)
 
         try:
-            # ---- Command dispatch -------------------------------------------------
-            for cmd in self._trigger_map.get(event_name, []):
+            # ---- Cancel commands with this trigger in cancel_on_triggers ----
+            for cmd in self._cancel_trigger_map.get(event_name, []):
                 live = self._live_runs[cmd.name]
-                logger.debug(f"Evaluating command '{cmd.name}' for trigger '{event_name}': {len(live)} live runs")
-
-                # cancel_on_triggers
-                if event_name in cmd.cancel_on_triggers and live:
+                if live:
                     for run in live:
                         logger.debug(
                             f"Cancelling command '{cmd.name}' ({run.run_id}) due to cancel_on_trigger '{event_name}'"
                         )
                         run.cancel()
-                    continue
+
+            # ---- Command dispatch for matching triggers --------------------------------
+            for cmd in self._trigger_map.get(event_name, []):
+                live = self._live_runs[cmd.name]
+                logger.debug(f"Evaluating command '{cmd.name}' for trigger '{event_name}': {len(live)} live runs")
 
                 # Concurrency / retrigger policy
                 if cmd.max_concurrent > 0 and len(live) >= cmd.max_concurrent:
@@ -313,7 +328,7 @@ class CommandRunner:
                     await proc.wait()
                 except Exception:
                     pass
-            # DO NOT re-raise — let the task finish cleanly
+            # DO NOT re-raise – let the task finish cleanly
             return
 
         except Exception as exc:
@@ -363,8 +378,6 @@ class CommandRunner:
         logger.debug(f"Auto-triggered '{trigger_name}' with inherited cycle detection")
 
     # Control
-    
-
     def cancel_command(self, name: str) -> None:
         logger.debug(f"Cancelling command: {name}")
         for run in self._live_runs.get(name, []):
@@ -421,10 +434,30 @@ class CommandRunner:
 
     # Introspection
     def get_commands_by_trigger(self, trigger_name: str) -> List[CommandConfig]:
+        """Get commands that will START when this trigger fires."""
         return self._trigger_map.get(trigger_name, []).copy()
 
+    def get_commands_by_cancel_trigger(self, trigger_name: str) -> List[CommandConfig]:
+        """Get commands that will be CANCELLED when this trigger fires."""
+        return self._cancel_trigger_map.get(trigger_name, []).copy()
+
     def has_trigger(self, trigger_name: str) -> bool:
+        """Check if this trigger will START any commands."""
         return trigger_name in self._trigger_map
+
+    def has_cancel_trigger(self, trigger_name: str) -> bool:
+        """Check if this trigger will CANCEL any commands."""
+        return trigger_name in self._cancel_trigger_map
+
+    def has_callback(self, trigger_name: str) -> bool:
+        """Check if this trigger has any registered callbacks."""
+        return trigger_name in self._callbacks
+
+    def has_any_handler(self, trigger_name: str) -> bool:
+        """Check if this trigger will do ANYTHING (start commands, cancel commands, or invoke callbacks)."""
+        return (self.has_trigger(trigger_name) 
+                or self.has_cancel_trigger(trigger_name) 
+                or self.has_callback(trigger_name))
 
     # Variable handling
     def set_vars(self, vars_dict: Dict[str, str]) -> None:
@@ -466,7 +499,7 @@ class CommandRunner:
             if current in status:
                 logger.debug(f"Command '{name}' ({self.get_result(name).run_id if self.get_result(name) else 'unknown'}) reached status: {current} after {asyncio.get_event_loop().time() - start:.2f}s")
                 return True
-            await asyncio.sleep(0.01)  # 10ms polling — fast and responsive
+            await asyncio.sleep(0.01)  # 10ms polling – fast and responsive
         return False
     
     async def wait_for_running(self, name: str, timeout: float = 5.0) -> bool:

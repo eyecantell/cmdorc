@@ -29,10 +29,13 @@ async def test_get_result_with_bad_run_id_raises():
 async def test_wait_for_helpers(create_long_running_proc):
     cfg = CommandConfig(name="Wait", command="sleep 3", triggers=["start"])
     runner = CommandRunner([cfg])
-    proc = create_long_running_proc()
+    # create_long_running_proc is already the proc object (injected by pytest)
+    proc = create_long_running_proc
 
     with patch("asyncio.create_subprocess_shell", return_value=proc):
         await runner.trigger("start")
         assert await runner.wait_for_running("Wait", timeout=1.0)
+        
+        # Test error case
         with pytest.raises(ValueError, match="Unknown command: NonExistent"):
             await runner.wait_for_idle("NonExistent", timeout=0.1)
