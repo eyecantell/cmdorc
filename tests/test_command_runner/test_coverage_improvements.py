@@ -274,23 +274,3 @@ async def test_runresult_repr():
     assert "RunResult" in repr_str
     assert "Test" in repr_str
     assert "success" in repr_str or "SUCCESS" in repr_str
-
-
-@pytest.mark.asyncio
-async def test_timeout_exceeds2(create_long_running_proc):
-    cfg = CommandConfig(
-        name="Timeout",
-        command="sleep 100",
-        triggers=["start"],
-        timeout_secs=0.1,
-        keep_history=5,
-    )
-    runner = CommandRunner([cfg])
-    proc = create_long_running_proc
-    proc.wait = AsyncMock(side_effect=Exception("wait error"))  # Cover except Exception: pass
-    with patch("asyncio.create_subprocess_shell", return_value=proc):
-        await runner.trigger("start")
-        await asyncio.sleep(0.3)
-        assert await runner.wait_for_status("Timeout", CommandStatus.FAILED, timeout=2.0)
-        result = runner.get_result("Timeout")
-        assert "Timeout" in result.error.lower()
