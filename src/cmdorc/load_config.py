@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import logging
-from typing import BinaryIO, Dict, TextIO
+from typing import BinaryIO, TextIO
 
 try:
     import tomllib as tomli  # Python 3.11+
@@ -35,7 +35,7 @@ def load_config(path: str | Path | BinaryIO | TextIO) -> RunnerConfig:
             data = tomli.load(f)
 
     # Extract and resolve [variables] (global defaults)
-    vars_dict: Dict[str, str] = data.get("variables", {}).copy()
+    vars_dict: dict[str, str] = data.get("variables", {}).copy()
 
     # Resolve nested {{ }} variables – detect cycles AND missing vars
     for _ in range(5):  # Max depth to avoid infinite loops
@@ -48,7 +48,7 @@ def load_config(path: str | Path | BinaryIO | TextIO) -> RunnerConfig:
                     logger.debug(f"Resolved variable '{key}': '{value}' -> '{new_value}'")
                     changed = True
             except KeyError as e:
-                raise ValueError(f"Missing variable in [variables].{key}: {e}")
+                raise ValueError(f"Missing variable in [variables].{key}: {e}") from None
 
         if not changed:
             logger.debug("No more variable changes detected; resolution complete.")
@@ -72,9 +72,9 @@ def load_config(path: str | Path | BinaryIO | TextIO) -> RunnerConfig:
             cmd = CommandConfig(**cmd_dict)
             commands.append(cmd)
         except TypeError as e:
-            raise ValueError(f"Invalid config in [[command]]: {e}")
+            raise ValueError(f"Invalid config in [[command]]: {e}") from None
 
     if not commands:
-        raise ValueError("At least one [[command]] is required")
+        raise ValueError("At least one [[command]] is required") from None
 
     return RunnerConfig(commands=commands, vars=vars_dict)

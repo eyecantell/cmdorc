@@ -1,6 +1,5 @@
 # cmdorc/runner_config.py
 from dataclasses import dataclass, field
-from typing import Dict, List
 
 from .command_config import CommandConfig
 
@@ -12,9 +11,9 @@ class RunnerConfig:
     Contains everything needed to instantiate a CommandRunner.
     """
 
-    commands: List[CommandConfig]
+    commands: list[CommandConfig]
 
-    vars: Dict[str, str] = field(default_factory=dict)
+    vars: dict[str, str] = field(default_factory=dict)
     """
     Global template variables.
     Example: {"base_directory": "/home/me/project", "tests_directory": "{{ base_directory }}/tests"}

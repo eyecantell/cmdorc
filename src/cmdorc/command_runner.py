@@ -9,7 +9,7 @@ import uuid
 from collections import defaultdict
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Callable, Dict, List, Optional
+from typing import Callable
 
 from .command_config import CommandConfig
 from .runner_config import RunnerConfig
@@ -40,25 +40,25 @@ class CommandStatus(Enum):
 class RunResult:
     run_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     command_name: str = field(init=False)
-    trigger_event: Optional[str] = None
+    trigger_event: str | None = None
 
     output: str = ""
-    success: Optional[bool] = None
-    error: Optional[str] = None
+    success: bool | None = None
+    error: str | None = None
 
     state: RunState = RunState.RUNNING
 
     # Timing
-    task: Optional[asyncio.Task] = None
-    start_time: Optional[datetime.datetime] = None
-    end_time: Optional[datetime.datetime] = None
+    task: asyncio.Task | None = None
+    start_time: datetime.datetime | None = None
+    end_time: datetime.datetime | None = None
 
     # Cycle detection propagation
-    _seen: Optional[set[str]] = None
+    _seen: set[str] | None = None
 
     # Timing helpers
     @property
-    def duration_secs(self) -> Optional[float]:
+    def duration_secs(self) -> float | None:
         """Exact duration in seconds (float) or None if not finished."""
         if self.start_time and self.end_time:
             return (self.end_time - self.start_time).total_seconds()
@@ -129,41 +129,41 @@ class RunResult:
 class CommandRunner:
     def __init__(
         self,
-        config: RunnerConfig | List[CommandConfig],
-        base_directory: Optional[str] = None,
+        config: RunnerConfig | list[CommandConfig],
+        base_directory: str | None = None,
     ):
         if isinstance(config, list):
             config = RunnerConfig(commands=config)
 
-        self._command_configs: Dict[str, CommandConfig] = {c.name: c for c in config.commands}
+        self._command_configs: dict[str, CommandConfig] = {c.name: c for c in config.commands}
         if len(self._command_configs) != len(config.commands):
             raise ValueError("Duplicate command names detected")
 
-        self.vars: Dict[str, str] = config.vars.copy()
+        self.vars: dict[str, str] = config.vars.copy()
         self.vars["base_directory"] = base_directory or self.vars.get("base_directory", os.getcwd())
 
         # Build both trigger maps
         self._trigger_map = self._build_trigger_map()
         self._cancel_trigger_map = self._build_cancel_trigger_map()
 
-        self._callbacks: Dict[str, List[Callable[[Optional[Dict]], None]]] = defaultdict(list)
+        self._callbacks: dict[str, list[Callable[[dict] | None, None]]] = defaultdict(list)
 
-        self._live_runs: Dict[str, List[RunResult]] = defaultdict(list)
-        self._history: Dict[str, List[RunResult]] = defaultdict(list)
+        self._live_runs: dict[str, list[RunResult]] = defaultdict(list)
+        self._history: dict[str, list[RunResult]] = defaultdict(list)
 
         logger.debug(f"CommandRunner initialized with {len(self._command_configs)} commands")
 
     # Internal helpers
-    def _build_trigger_map(self) -> Dict[str, List[CommandConfig]]:
-        mapping: Dict[str, List[CommandConfig]] = defaultdict(list)
+    def _build_trigger_map(self) -> dict[str, list[CommandConfig]]:
+        mapping: dict[str, list[CommandConfig]] = defaultdict(list)
         for cmd in self._command_configs.values():
             for t in cmd.triggers:
                 mapping[t].append(cmd)
         return mapping
 
-    def _build_cancel_trigger_map(self) -> Dict[str, List[CommandConfig]]:
+    def _build_cancel_trigger_map(self) -> dict[str, list[CommandConfig]]:
         """Build map of trigger -> commands to cancel when that trigger fires."""
-        mapping: Dict[str, List[CommandConfig]] = defaultdict(list)
+        mapping: dict[str, list[CommandConfig]] = defaultdict(list)
         for cmd in self._command_configs.values():
             for t in cmd.cancel_on_triggers:
                 mapping[t].append(cmd)
@@ -195,18 +195,18 @@ class CommandRunner:
         raise RecursionError(f"Exceeded max template nesting depth ({max_depth})")
 
     # Trigger registration
-    def on_trigger(self, trigger_name: str, callback: Callable[[Optional[Dict]], None]):
+    def on_trigger(self, trigger_name: str, callback: Callable[[dict | None], None]):
         logger.debug(f"Registering callback for trigger: '{trigger_name}'")
         self._callbacks[trigger_name].append(callback)
 
-    def off_trigger(self, trigger_name: str, callback: Callable[[Optional[Dict]], None]):
+    def off_trigger(self, trigger_name: str, callback: Callable[[dict | None], None]):
         logger.debug(f"Unregistering callback for trigger: '{trigger_name}'")
         self._callbacks[trigger_name] = [
             cb for cb in self._callbacks[trigger_name] if cb != callback
         ]
 
     # Core trigger dispatch
-    async def trigger(self, event_name: str, _seen: Optional[set[str]] = None) -> None:
+    async def trigger(self, event_name: str, _seen: set[str] | None = None) -> None:
         logger.debug(f"Trigger: '{event_name}'")
 
         # Check if there's anything to do
@@ -404,7 +404,7 @@ class CommandRunner:
                 run.cancel()
 
     # Queries
-    def get_status(self, name: str, run_id: Optional[str] = None) -> CommandStatus:
+    def get_status(self, name: str, run_id: str | None = None) -> CommandStatus:
         """Current status of the command (running → last run state → idle) or a specific run if run_id provided."""
         if name not in self._command_configs:
             raise ValueError(f"Unknown command: {name}")
@@ -422,7 +422,7 @@ class CommandRunner:
             return CommandStatus(self._history[name][-1].state.value)
         return CommandStatus.IDLE
 
-    def get_result(self, name: str, run_id: Optional[str] = None) -> Optional[RunResult]:
+    def get_result(self, name: str, run_id: str | None = None) -> RunResult | None:
         if name not in self._command_configs:
             raise ValueError(f"Unknown command: {name}")
 
@@ -440,18 +440,18 @@ class CommandRunner:
             return self._history[name][-1]
         return None
 
-    def get_history(self, name: str) -> List[RunResult]:
+    def get_history(self, name: str) -> list[RunResult]:
         return self._history[name].copy()
 
-    def get_live_runs(self, name: str) -> List[RunResult]:
+    def get_live_runs(self, name: str) -> list[RunResult]:
         return self._live_runs[name].copy()
 
     # Introspection
-    def get_commands_by_trigger(self, trigger_name: str) -> List[CommandConfig]:
+    def get_commands_by_trigger(self, trigger_name: str) -> list[CommandConfig]:
         """Get commands that will START when this trigger fires."""
         return self._trigger_map.get(trigger_name, []).copy()
 
-    def get_commands_by_cancel_trigger(self, trigger_name: str) -> List[CommandConfig]:
+    def get_commands_by_cancel_trigger(self, trigger_name: str) -> list[CommandConfig]:
         """Get commands that will be CANCELLED when this trigger fires."""
         return self._cancel_trigger_map.get(trigger_name, []).copy()
 
@@ -476,15 +476,15 @@ class CommandRunner:
         )
 
     # Variable handling
-    def set_vars(self, vars_dict: Dict[str, str]) -> None:
+    def set_vars(self, vars_dict: dict[str, str]) -> None:
         self.vars.update(vars_dict)
 
     def add_var(self, key: str, value: str) -> None:
         self.vars[key] = value
 
-    def validate_templates(self, strict: bool = False) -> Dict[str, List[str]]:
+    def validate_templates(self, strict: bool = False) -> dict[str, list[str]]:
         """Validate all command templates – returns dict of command → list of errors."""
-        unresolved: Dict[str, List[str]] = {}
+        unresolved: dict[str, list[str]] = {}
         for cmd in self._command_configs.values():
             try:
                 self._resolve_template(cmd.command)

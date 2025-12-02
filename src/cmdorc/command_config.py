@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import List, Literal
+from typing import Literal
 
 
 @dataclass(frozen=True)
@@ -17,14 +17,14 @@ class CommandConfig:
     command: str
     """Shell command to execute. May contain {{ template_vars }}."""
 
-    triggers: List[str]
+    triggers: list[str]
     """
     List of exact trigger strings that will cause this command to run.
     Must explicitly include the command's own name if manual/hotkey execution is desired.
     Example: ["changes_applied", "Tests"]
     """
 
-    cancel_on_triggers: List[str] = field(default_factory=list)
+    cancel_on_triggers: list[str] = field(default_factory=list)
     """
     If any of these triggers fire while the command is running, cancel it immediately.
     """
