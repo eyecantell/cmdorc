@@ -50,3 +50,15 @@ async def test_error_output_logged_on_failure(mock_failure_proc):
     with patch("asyncio.create_subprocess_shell", return_value=mock_failure_proc):
         await runner.trigger("go")
         await runner.wait_for_status("Err", CommandStatus.FAILED, timeout=1.0)
+
+def test_duplicate_task_completed_callback(caplog):
+    dummy_cfg = CommandConfig(name="Dummy", command="echo ok", triggers=[])
+    runner = CommandRunner([dummy_cfg])
+    result = RunResult(command_name="Dummy", run_id="test_id")
+    result.mark_success()  # Set state to non-running
+
+    # Simulate duplicate call
+    runner._task_completed("Dummy", result)
+    runner._task_completed("Dummy", result)  # Second call triggers duplicate log
+
+    assert "Ignoring duplicate completion callback" in caplog.text

@@ -38,3 +38,26 @@ async def test_cancel_and_restart_policy(create_long_running_proc):
         # First run should be cancelled
         cancelled_runs = [r for r in history if r.state == RunState.CANCELLED]
         assert len(cancelled_runs) >= 1
+
+@pytest.mark.asyncio
+async def test_ignore_retrigger_policy(create_long_running_proc):
+    cfg = CommandConfig(
+        name="Sleepy",
+        command="sleep 10",
+        triggers=["start"],
+        max_concurrent=1,
+        on_retrigger="ignore",
+        keep_history=10,
+    )
+    runner = CommandRunner([cfg])
+    proc = create_long_running_proc
+    with patch("asyncio.create_subprocess_shell", return_value=proc):
+        await runner.trigger("start")
+        assert await runner.wait_for_running("Sleepy", timeout=1.0)
+        first_run_id = runner.get_result("Sleepy").run_id
+        await runner.trigger("start")
+        await asyncio.sleep(0.2)
+        assert runner.get_result("Sleepy").run_id == first_run_id  # No restart
+        history = runner.get_history("Sleepy")
+        assert not any(r.state == RunState.CANCELLED for r in history)
+        runner.cancel_command("Sleepy")  # Clean up

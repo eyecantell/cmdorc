@@ -78,3 +78,20 @@ async def test_cancel_on_triggers_stops_running_command():
         # Verify no live runs remain
         live_runs = runner.get_live_runs("Cancelable")
         assert len(live_runs) == 0, "Should have no live runs after cancellation"
+
+
+@pytest.mark.asyncio
+async def test_cancel_all_cancels_multiple(create_long_running_proc):
+    configs = [
+        CommandConfig(name="A", command="sleep 100", triggers=["start"]),
+        CommandConfig(name="B", command="sleep 100", triggers=["start"]),
+    ]
+    runner = CommandRunner(configs)
+    proc = create_long_running_proc
+    with patch("asyncio.create_subprocess_shell", return_value=proc):
+        await runner.trigger("start")
+        assert await runner.wait_for_running("A", timeout=1.0)
+        assert await runner.wait_for_running("B", timeout=1.0)
+        runner.cancel_all()
+        assert await runner.wait_for_cancelled("A", timeout=2.0)
+        assert await runner.wait_for_cancelled("B", timeout=2.0)

@@ -5,7 +5,7 @@ Targets uncovered lines and edge cases.
 """
 
 import asyncio
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
@@ -93,29 +93,26 @@ async def test_get_result_returns_none_when_never_run():
     result = runner.get_result("Never")
     assert result is None
 
-
 @pytest.mark.asyncio
 async def test_get_result_returns_live_run_first(mock_success_proc):
-    """Test get_result prioritizes live runs over history - covers lines 414-420"""
     cfg = CommandConfig(name="Live", command="sleep 1", triggers=["go"], keep_history=5)
     runner = CommandRunner([cfg])
 
     proc = AsyncMock()
     proc.returncode = None
-    proc.communicate = AsyncMock(side_effect=asyncio.sleep(10))  # Long running
+    proc.communicate = AsyncMock(side_effect=asyncio.sleep(0.1))  # Shorten for faster tests
 
     with patch("asyncio.create_subprocess_shell", return_value=proc):
-        # Start a long-running command
         await runner.trigger("go")
         await runner.wait_for_status("Live", CommandStatus.RUNNING, timeout=1.0)
 
-        # get_result should return the live run
+        # Should return live run first
         result = runner.get_result("Live")
-        assert result is not None
         assert result.state == RunState.RUNNING
 
-        # Cleanup
+        # Clean up to avoid warnings
         runner.cancel_command("Live")
+        await runner.wait_for_status("Live", CommandStatus.CANCELLED, timeout=1.0)
 
 
 @pytest.mark.asyncio
@@ -257,17 +254,13 @@ async def test_base_directory_override():
 
 
 @pytest.mark.asyncio
-async def test_cancel_does_nothing_when_task_done():
-    """Test RunResult.cancel when task is already done - covers line 84"""
+def test_cancel_does_nothing_when_task_done():
     result = RunResult()
     result.command_name = "Test"
-    result.task = AsyncMock()
-    result.task.done.return_value = True  # Already done
-
-    # Should not call cancel
-    result.cancel()
-    result.task.cancel.assert_not_called()
-
+    result.task = Mock(spec=asyncio.Task)  # Use sync Mock to avoid async cancel warning
+    result.task.done.return_value = True
+    result.cancel()  # Should do nothing, no error/warning
+    result.task.cancel.assert_not_called()  # Verify no call
 
 @pytest.mark.asyncio
 async def test_runresult_repr():
@@ -281,3 +274,23 @@ async def test_runresult_repr():
     assert "RunResult" in repr_str
     assert "Test" in repr_str
     assert "success" in repr_str or "SUCCESS" in repr_str
+
+
+@pytest.mark.asyncio
+async def test_timeout_exceeds2(create_long_running_proc):
+    cfg = CommandConfig(
+        name="Timeout",
+        command="sleep 100",
+        triggers=["start"],
+        timeout_secs=0.1,
+        keep_history=5,
+    )
+    runner = CommandRunner([cfg])
+    proc = create_long_running_proc
+    proc.wait = AsyncMock(side_effect=Exception("wait error"))  # Cover except Exception: pass
+    with patch("asyncio.create_subprocess_shell", return_value=proc):
+        await runner.trigger("start")
+        await asyncio.sleep(0.3)
+        assert await runner.wait_for_status("Timeout", CommandStatus.FAILED, timeout=2.0)
+        result = runner.get_result("Timeout")
+        assert "Timeout" in result.error.lower()

@@ -1,7 +1,8 @@
 # tests/test_load_config.py
+
 import logging
 from io import BytesIO
-
+import io
 import pytest
 
 from cmdorc import load_config
@@ -14,7 +15,7 @@ def sample_toml():
     toml_str = """
     [variables]
     base_directory = "/project"
-    tests_directory = "{{base_directory}}/tests"   # ← no spaces!
+    tests_directory = "{{base_directory}}/tests"   # no spaces allowed
 
     [[command]]
     name = "Tests"
@@ -54,30 +55,29 @@ def test_load_config_nested_resolution_loop():
     a = "{{b}}"
     b = "{{c}}"
     c = "{{a}}"
+
     [[command]]
     name = "Test"
     command = "echo ok"
     triggers = []
     """
     )
-    with pytest.raises(ValueError, match="Stalled resolution in"):
+    with pytest.raises(ValueError, match="Unresolved nested variables remain"):
         load_config(loop_toml)
 
 
 def test_load_config_from_textio():
-    # 25-26: tomli.load for TextIO
     toml_str = """
     [[command]]
     name = "Test"
     command = "echo ok"
     triggers = []
     """
-    config = load_config(BytesIO(toml_str.encode("utf-8")))  # Already covered, but use TextIO
+    config = load_config(BytesIO(toml_str.encode("utf-8")))
     assert len(config.commands) == 1
 
 
 def test_variable_resolution_changes():
-    # 41-42: changed = True in resolution loop
     toml_str = """
     [variables]
     a = "{{b}}"
@@ -89,11 +89,10 @@ def test_variable_resolution_changes():
     triggers = []
     """
     config = load_config(BytesIO(toml_str.encode("utf-8")))
-    assert config.vars["a"] == "value"  # Resolution happened
+    assert config.vars["a"] == "value"
 
 
 def test_no_more_changes_debug(caplog):
-    # 51: "No more variable changes detected"
     toml_str = """
     [variables]
     a = "static"
@@ -105,16 +104,14 @@ def test_no_more_changes_debug(caplog):
     """
 
     load_config(BytesIO(toml_str.encode("utf-8")))
-    assert "No more variable changes detected" in caplog.text
+    assert "Variable resolution stabilized" in caplog.text
 
 
-def test_stalled_resolution_raise():
-    # 56: Stalled resolution raise
+def test_missing_variable_raises():
     toml_str = """
     [variables]
-    a = "{{b}} and {{c}}"
-    b = "ok"
-    c = "{{d}}"  # Unresolved
+    a = "{{b}} and stuff"
+    # b missing
 
     [[command]]
     name = "Test"
@@ -125,19 +122,52 @@ def test_stalled_resolution_raise():
         load_config(BytesIO(toml_str.encode("utf-8")))
 
 
-def test_infinite_loop_raise():
-    # 63-64: Infinite loop raise
+def test_infinite_loop_deeper():
     toml_str = """
     [variables]
     a = "{{b}}"
     b = "{{c}}"
     c = "{{d}}"
-    d = "{{a}}"  # Cycle deeper than max
+    d = "{{a}}"  # Cycle
 
     [[command]]
     name = "Test"
     command = "echo ok"
     triggers = []
     """
-    with pytest.raises(ValueError, match="Stalled resolution in"):
+    with pytest.raises(ValueError, match="Unresolved nested variables remain"):
         load_config(BytesIO(toml_str.encode("utf-8")))
+
+
+def test_load_config_from_str_path(tmp_path):
+    toml_path = tmp_path / "config.toml"
+    toml_path.write_text("""
+[[command]]
+name = "Test"
+command = "echo ok"
+triggers = []
+    """)
+    config = load_config(str(toml_path))
+    assert len(config.commands) == 1
+    assert config.commands[0].name == "Test"
+
+
+def test_deep_nesting_exceeds_max():
+    toml_str = """
+[variables]
+a = "{{b}}"
+b = "{{c}}"
+c = "{{d}}"
+d = "{{e}}"
+e = "{{f}}"
+f = "{{g}}"
+g = "value"
+
+[[command]]
+name = "Test"
+command = "echo ok"
+triggers = []
+    """
+    # Exceeds 5 iterations → infinite loop
+    with pytest.raises(ValueError, match="Unresolved nested variables remain"):
+        load_config(io.BytesIO(toml_str.encode("utf-8")))

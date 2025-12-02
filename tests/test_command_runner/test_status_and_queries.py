@@ -41,3 +41,9 @@ async def test_wait_for_helpers(create_long_running_proc):
         # Test error case
         with pytest.raises(ValueError, match="Unknown command: NonExistent"):
             await runner.wait_for_idle("NonExistent", timeout=0.1)
+
+def test_get_status_with_bad_run_id_raises():
+    cfg = CommandConfig(name="Test", command="echo ok", triggers=[])
+    runner = CommandRunner([cfg])
+    with pytest.raises(ValueError, match="Run not found"):
+        runner.get_status("Test", "fake-id")
