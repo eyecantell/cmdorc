@@ -56,7 +56,7 @@ class RunResult:
     end_time: datetime.datetime | None = None
 
     # Cycle detection propagation
-    _seen: set[str] | None = None
+    _seen: list[str] | None = None
 
     # Timing helpers
     @property
@@ -202,7 +202,7 @@ class CommandRunner:
         ]
 
     # Core trigger dispatch
-    async def trigger(self, event_name: str, _seen: set[str] | None = None) -> None:
+    async def trigger(self, event_name: str, _seen: list[str] | None = None) -> None:
         logger.debug(f"Trigger: '{event_name}'")
 
         # Check if there's anything to do
@@ -215,16 +215,16 @@ class CommandRunner:
 
         # === True cycle detection across chained and auto-triggered events ===
         if _seen is None:
-            _seen = set()
+            _seen = []
 
         if event_name in _seen:
             # Show recent part of the cycle for debuggability
-            recent = list(_seen)[-8:]
+            recent = _seen[-8:]
             cycle_path = " → ".join(recent + [event_name])
             logger.warning(f"Trigger cycle detected! Preventing re-entry: {cycle_path}")
             return
 
-        _seen.add(event_name)
+        _seen.append(event_name)
 
         try:
             # ---- Cancel commands with this trigger in cancel_on_triggers ----
@@ -280,7 +280,7 @@ class CommandRunner:
                     logger.warning(f"Trigger callback error ({event_name}): {exc}")
 
         finally:
-            _seen.discard(event_name)
+            _seen.pop()
 
     # Execution
     async def _execute(self, cmd: CommandConfig, result: RunResult) -> None:
