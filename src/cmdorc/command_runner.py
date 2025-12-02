@@ -336,10 +336,32 @@ class CommandRunner:
             logger.info(
                 f"Command '{cmd.name}' ({result.run_id}) was cancelled in async context"
             )
-            result.mark_cancelled()
+            # Partial capture if any stdout available
+            out = b""
+            err = b""
+            try:
+                if proc and proc.stdout:
+                    out = await proc.stdout.read()
+                if proc and proc.stderr:
+                    err = await proc.stderr.read()
+            except Exception:
+                pass
 
+            if out or err:
+                try:
+                    result.output = (out + err).decode(errors="replace")
+                except Exception:
+                    result.output = ""
+
+            result.mark_cancelled()
             if proc and proc.returncode is None:
-                proc.kill()
+                try:
+                    proc.terminate()
+                    await asyncio.sleep(0.2)
+                except Exception:
+                    pass
+                if proc.returncode is None:
+                    proc.kill()
                 try:
                     await proc.wait()
                 except Exception:
