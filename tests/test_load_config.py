@@ -171,4 +171,4 @@ triggers = []
     """
     # Exceeds 5 iterations → infinite loop
     with pytest.raises(ValueError, match="Unresolved nested variables remain"):
-        load_config(io.BytesIO(toml_str.encode("utf-8")))
+        load_config(io.BytesIO(toml_str.encode("utf-8")), max_nested_depth=5)

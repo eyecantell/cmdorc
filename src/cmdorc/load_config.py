@@ -64,7 +64,7 @@ def resolve_double_brace_vars(value: str, vars_dict: dict[str, str], *, max_dept
 # =====================================================================
 #   Main loader
 # =====================================================================
-def load_config(path: str | Path | BinaryIO | TextIO) -> RunnerConfig:
+def load_config(path: str | Path | BinaryIO | TextIO, max_nested_depth: int = 10) -> RunnerConfig:
     """
     Load and validate a TOML config file into a RunnerConfig.
 
@@ -90,11 +90,11 @@ def load_config(path: str | Path | BinaryIO | TextIO) -> RunnerConfig:
 
     # Nested resolution across variables:
     # For example: b = "{{ a }}" and c = "{{ b }}"
-    for _ in range(5):
+    for _ in range(max_nested_depth):
         changed = False
 
         for key, value in list(vars_dict.items()):
-            new_value = resolve_double_brace_vars(value, vars_dict)
+            new_value = resolve_double_brace_vars(value, vars_dict, max_depth=max_nested_depth)
             if new_value != value:
                 vars_dict[key] = new_value
                 logger.debug(f"Resolved variable '{key}': '{value}' -> '{new_value}'")

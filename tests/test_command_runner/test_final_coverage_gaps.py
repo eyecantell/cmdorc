@@ -203,10 +203,8 @@ async def test_get_history_unknown_command():
     """Test get_history with unknown command - covers implicit validation"""
     runner = CommandRunner([CommandConfig(name="Known", command="echo ok", triggers=["go"])])
 
-    # This should work but return empty list (no validation in get_history)
-    # Let's test that it doesn't crash
-    history = runner.get_history("Unknown")
-    assert history == []
+    with pytest.raises(ValueError, match="Unknown command"):
+        runner.get_history("Unknown")
 
 
 @pytest.mark.asyncio
@@ -214,9 +212,8 @@ async def test_get_live_runs_unknown_command():
     """Test get_live_runs with unknown command"""
     runner = CommandRunner([CommandConfig(name="Known", command="echo ok", triggers=["go"])])
 
-    # This should work but return empty list
-    live = runner.get_live_runs("Unknown")
-    assert live == []
+    with pytest.raises(ValueError, match="Unknown command"):
+        runner.get_live_runs("Unknown")
 
 
 @pytest.mark.asyncio

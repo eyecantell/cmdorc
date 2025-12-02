@@ -218,7 +218,7 @@ class CommandRunner:
         if event_name in _seen:
             # Show recent part of the cycle for debuggability
             recent = _seen[-8:]
-            cycle_path = " → ".join(recent + [event_name])
+            cycle_path = " -> ".join(recent + [event_name])
             logger.warning(f"Trigger cycle detected! Preventing re-entry: {cycle_path}")
             return
 
@@ -492,6 +492,7 @@ class CommandRunner:
             try:
                 self._resolve_template(cmd.command)
             except Exception as exc:
+                logger.exception(f"Template validation error in command '{cmd.name}': {exc}")
                 unresolved.setdefault(cmd.name, []).append(str(exc))
 
         if unresolved and strict:
