@@ -7,9 +7,9 @@ import logging
 import os
 import uuid
 from collections import defaultdict
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Callable
 
 from .command_config import CommandConfig
 from .load_config import resolve_double_brace_vars
@@ -171,14 +171,14 @@ class CommandRunner:
                 mapping[t].append(cmd)
         return mapping
 
-    def _resolve_template(self, template: str, *, max_depth: int = 10) -> str:
+    def _resolve_template(self, template: str, *, max_nested_depth: int = 10) -> str:
         """
         Resolve double-brace {{ var }} templates using the same logic as load_config.
         Supports nested replacements up to `max_depth` to avoid infinite loops.
         """
         current = template
-        for _ in range(max_depth):
-            new = resolve_double_brace_vars(current, self.vars, max_depth=max_depth)
+        for _ in range(max_nested_depth):
+            new = resolve_double_brace_vars(current, self.vars, max_depth=max_nested_depth)
             if new == current:
                 return new
             current = new
@@ -281,11 +281,11 @@ class CommandRunner:
             _seen.pop()
 
     # Execution
-    async def _execute(self, cmd: CommandConfig, result: RunResult) -> None:
+    async def _execute(self, cmd: CommandConfig, result: RunResult, max_nested_depth: int = 10) -> None:
         proc = None
         try:
             # --- Resolve command template ---
-            resolved_cmd = self._resolve_template(cmd.command)
+            resolved_cmd = self._resolve_template(cmd.command, max_nested_depth=max_nested_depth)
             logger.debug(f"Executing '{cmd.name}': {resolved_cmd}")
 
             # --- Start subprocess ---
@@ -375,12 +375,20 @@ class CommandRunner:
                 )
                 self._history[cmd_name] = self._history[cmd_name][-cfg.keep_history :]
 
-        # Auto-trigger completion events with propagated seen set
+        # Auto-trigger completion events with propagated seen set (e.g. command_success:XXX, command_failed:XXX)
         trigger_name = f"command_{result.state.value}:{cmd_name}"
         if result._seen is not None:
             asyncio.create_task(self.trigger(trigger_name, _seen=result._seen.copy()))
         else:
             asyncio.create_task(self.trigger(trigger_name))
+
+        # If the command finished either success or failure (not cancelled), trigger command_finished:XXX
+        if result.state in (RunState.SUCCESS, RunState.FAILED):
+            finish_trigger = f"command_finished:{cmd_name}"
+            if result._seen is not None:
+                asyncio.create_task(self.trigger(finish_trigger, _seen=result._seen.copy()))
+            else:
+                asyncio.create_task(self.trigger(finish_trigger))
 
         logger.debug(
             f"Command '{cmd_name}' ({result.run_id}) completed with state: {result.state}. {len(self._live_runs[cmd_name])} runs live. {len(self._history[cmd_name])} runs in history."
@@ -485,12 +493,12 @@ class CommandRunner:
     def add_var(self, key: str, value: str) -> None:
         self.vars[key] = value
 
-    def validate_templates(self, strict: bool = False) -> dict[str, list[str]]:
+    def validate_templates(self, strict: bool = False, max_nested_depth: int = 10) -> dict[str, list[str]]:
         """Validate all command templates – returns dict of command → list of errors."""
         unresolved: dict[str, list[str]] = {}
         for cmd in self._command_configs.values():
             try:
-                self._resolve_template(cmd.command)
+                self._resolve_template(cmd.command, max_nested_depth=max_nested_depth)
             except Exception as exc:
                 logger.exception(f"Template validation error in command '{cmd.name}': {exc}")
                 unresolved.setdefault(cmd.name, []).append(str(exc))

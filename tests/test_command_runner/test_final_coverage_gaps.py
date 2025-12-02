@@ -10,7 +10,8 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from cmdorc.command_runner import CommandConfig, CommandRunner, CommandStatus, RunState
-
+import logging
+logging.getLogger("cmdorc").setLevel(logging.DEBUG)
 
 @pytest.mark.asyncio
 async def test_cancel_on_triggers_no_live_runs():

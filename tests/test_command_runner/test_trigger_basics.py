@@ -4,7 +4,8 @@ from unittest.mock import patch
 import pytest
 
 from cmdorc.command_runner import CommandConfig, CommandRunner, CommandStatus
-
+import logging
+logging.getLogger("cmdorc").setLevel(logging.DEBUG)
 
 @pytest.mark.asyncio
 async def test_success(mock_success_proc):

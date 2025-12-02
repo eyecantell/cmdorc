@@ -6,7 +6,8 @@ from unittest.mock import patch
 import pytest
 
 from cmdorc.command_runner import CommandConfig, CommandRunner, CommandStatus, RunResult, RunState
-
+import logging
+logging.getLogger("cmdorc").setLevel(logging.DEBUG)
 
 @pytest.mark.asyncio
 async def test_trigger_with_no_handlers_logs_debug():
