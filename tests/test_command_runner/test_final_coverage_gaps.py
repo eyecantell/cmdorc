@@ -221,7 +221,7 @@ async def test_get_live_runs_unknown_command():
 
 @pytest.mark.asyncio
 async def test_wait_for_idle_success(mock_success_proc):
-    """Test wait_for_idle helper - covers line 479"""
+    """Test wait_for_not_running helper - covers line 479"""
     cfg = CommandConfig(name="Quick", command="echo ok", triggers=["go"])
     runner = CommandRunner([cfg])
 
@@ -229,16 +229,16 @@ async def test_wait_for_idle_success(mock_success_proc):
         await runner.trigger("go")
 
         # Wait for it to go idle (success -> idle in status terms)
-        # Actually wait_for_idle checks for IDLE status, which won't happen after success
+        # Actually wait_for_not_running checks for IDLE status, which won't happen after success
         # Let's wait for success first
         await runner.wait_for_status("Quick", CommandStatus.SUCCESS, timeout=1.0)
 
-        # Now try wait_for_idle on a command that's never run
+        # Now try wait_for_not_running on a command that's never run
         cfg2 = CommandConfig(name="Idle", command="echo ok", triggers=["go2"])
         runner2 = CommandRunner([cfg2])
 
         # Should immediately return True since it's already idle
-        result = await runner2.wait_for_idle("Idle", timeout=0.1)
+        result = await runner2.wait_for_not_running("Idle", timeout=0.1)
         assert result is True
 
 

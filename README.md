@@ -44,7 +44,7 @@ tests_directory = "{{ base_directory }}/tests"
 
 [[command]]
 name = "Lint"
-triggers = ["changes_applied", "Lint"]  # self-trigger for manual run
+triggers = ["changes_applied"]
 command = "ruff check {{ base_directory }}"
 cancel_on_triggers = ["prompt_send", "exit"]
 max_concurrent = 1
@@ -73,11 +73,18 @@ async def main():
     # Trigger a workflow
     await runner.trigger("changes_applied")  # → Lint → (if success) Tests
 
-    # Manual trigger
-    await runner.trigger("Tests")
+    # Preferred way — just works, no config gymnastics
+    result = await runner.run_command("Tests")
+    print(f"Tests: {result.state.value} ({result.duration_str})")
+
+    # Fire-and-forget (e.g. from a UI button)
+    runner.run_command_async("Lint")
+
+    # Pass temporary variables for this run only
+    await runner.run_command("Deploy", env="production", region="us-east-1")
 
     # Wait for completion
-    await runner.wait_for_idle("Tests", timeout=30)
+    await runner.wait_for_not_running("Tests", timeout=30)
 
     # Get result
     result = runner.get_result("Tests")
@@ -142,7 +149,7 @@ runner.cancel_command("Tests")             # Cancel specific
 runner.get_status("Lint")                  # → CommandStatus.IDLE, etc.
 runner.get_result("Lint")                  # → RunResult (latest)
 runner.get_history("Lint")                 # → List[RunResult]
-runner.wait_for_idle("Tests", timeout=10)  # Async wait
+runner.wait_for_not_running("Tests", timeout=10)  # Async wait
 runner.set_vars({"env": "prod"})           # Runtime template vars
 ```
 

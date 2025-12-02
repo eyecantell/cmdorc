@@ -30,7 +30,7 @@ class RunState(Enum):
 class CommandStatus(Enum):
     """Effective status of a command in the runner."""
 
-    IDLE = "idle"
+    NEVER_RUN = "never_run"
     RUNNING = RunState.RUNNING.value
     SUCCESS = RunState.SUCCESS.value
     FAILED = RunState.FAILED.value
@@ -204,6 +204,79 @@ class CommandRunner:
             f"while resolving template: {template}"
         )
 
+    async def run_command(self, name: str, **override_vars: str) -> RunResult:
+        """
+        Directly execute a command by name — the ergonomic way to run commands manually.
+
+        This bypasses the need for the command name to appear in its own ``triggers`` list.
+        All normal safety features remain active:
+        - concurrency limits / retrigger policy
+        - cancel_on_triggers
+        - timeout
+        - history tracking
+        - command_started / command_success / etc. auto-events (with full cycle detection)
+        - template variable resolution
+
+        This is the method you should reach for in hotkeys, UI buttons, or LLM agents.
+
+        Args:
+            name: Exact command name.
+            **override_vars: One-shot template variable overrides for this run only.
+
+        Returns:
+            The final RunResult.
+
+        Raises:
+            ValueError: If the command does not exist.
+            RuntimeError: If something truly unexpected happens (should never occur).
+        """
+        if name not in self._command_configs:
+            known = ", ".join(sorted(self._command_configs.keys()))
+            raise ValueError(
+                f"Command '{name}' not found. Available: {known or '(none)'}"
+            )
+
+        cmd = self._command_configs[name]
+
+        # ---- One-shot variable overrides (very useful!) ----
+        old_vars = {}
+        if override_vars:
+            old_vars = {k: self.vars.get(k) for k in override_vars}
+            self.set_vars(override_vars)
+
+        try:
+            # ---- Re-use the exact same execution path that trigger() uses ----
+            # This gives us all concurrency/retrigger/cancellation logic for free.
+            result = RunResult(trigger_event=f"run_command:{name}")
+            result.command_name = name
+            result.mark_running()
+
+            # Emit command_started (cycle detection starts here)
+            self._trigger_with_cycle_detection(f"command_started:{name}", result)
+
+            task = asyncio.create_task(self._execute(cmd, result))
+            result.task = task
+            task.add_done_callback(
+                lambda t, n=name, r=result: self._task_completed(n, r)
+            )
+
+            self._live_runs[name].append(result)
+
+            # Wait for completion (user almost always wants the result)
+            await task  # Just await the actual task — simple and safe
+            return result
+
+        finally:
+            # Restore original variables
+            if override_vars:
+                for k in override_vars:
+                    self.vars.pop(k, None)
+                self.vars.update({k: v for k, v in old_vars.items() if v is not None})
+
+    def run_command_async(self, name: str, **override_vars: str) -> None:
+        """Non-blocking version of run_command()."""
+        asyncio.create_task(self.run_command(name, **override_vars))
+            
     # Trigger registration
     def on_trigger(self, trigger_name: str, callback: Callable[[dict | None], None]):
         logger.debug(f"Registering callback for trigger: '{trigger_name}'")
@@ -409,9 +482,14 @@ class CommandRunner:
         logger.debug(
             f"Command '{cmd_name}' ({result.run_id}) completed with state: {result.state}. {len(self._live_runs[cmd_name])} runs live. {len(self._history[cmd_name])} runs in history."
         )
-        logger.debug(
-            f"Command '{cmd_name}' ({result.run_id}) history is {[i.run_id + ': ' + i.state.value for i in self._history[cmd_name]]}"
-        )
+        if len(self._live_runs[cmd_name]) > 0:
+            logger.debug(
+                f"Command '{cmd_name}' ({result.run_id}) live runs are {[i.run_id + ': ' + i.state.value for i in self._live_runs[cmd_name]]}"
+            )
+        if len(self._history[cmd_name]) > 0:
+            logger.debug(
+                f"Command '{cmd_name}' ({result.run_id}) history is {[i.run_id + ': ' + i.state.value for i in self._history[cmd_name]]}"
+            )
         logger.debug(f"Auto-triggered '{trigger_name}' with inherited cycle detection")
 
     # Control
@@ -428,7 +506,7 @@ class CommandRunner:
 
     # Queries
     def get_status(self, name: str, run_id: str | None = None) -> CommandStatus:
-        """Current status of the command (running → last run state → idle) or a specific run if run_id provided."""
+        """Current status of the command (running → last run state → never_run) or a specific run if run_id provided."""
         if name not in self._command_configs:
             raise ValueError(f"Unknown command: {name}")
 
@@ -443,7 +521,7 @@ class CommandRunner:
 
         if self._history[name]:
             return CommandStatus(self._history[name][-1].state.value)
-        return CommandStatus.IDLE
+        return CommandStatus.NEVER_RUN
 
     def get_result(self, name: str, run_id: str | None = None) -> RunResult | None:
         if name not in self._command_configs:
@@ -553,9 +631,13 @@ class CommandRunner:
     async def wait_for_running(self, name: str, timeout: float = 5.0) -> bool:
         return await self.wait_for_status(name, CommandStatus.RUNNING, timeout)
 
-    async def wait_for_idle(self, name: str, timeout: float = 5.0) -> bool:
-        return await self.wait_for_status(name, CommandStatus.IDLE, timeout)
-
+    async def wait_for_not_running(self, name: str, timeout: float = 5.0) -> bool:
+        return await self.wait_for_status(
+            name,
+            [CommandStatus.SUCCESS, CommandStatus.FAILED, CommandStatus.CANCELLED, CommandStatus.NEVER_RUN],
+            timeout,
+        )
+    
     async def wait_for_cancelled(self, name: str, timeout: float = 5.0) -> bool:
         return await self.wait_for_status(name, CommandStatus.CANCELLED, timeout)
 

@@ -47,3 +47,33 @@ def mock_failure_proc():
     proc.communicate.return_value = (b"", b"error\n")
     proc.returncode = 1
     return proc
+
+
+@pytest.fixture
+def create_proc():
+    """
+    Factory fixture that returns properly configured asyncio subprocess mocks.
+    Use it like:
+        proc = create_proc(stdout=b"hello\n", returncode=0)
+        with patch("asyncio.create_subprocess_shell", return_value=proc):
+            ...
+    """
+    def _make(stdout=b"", stderr=b"", returncode=0, delay=0.0):
+        proc = AsyncMock()
+
+        async def communicate():
+            if delay:
+                await asyncio.sleep(delay)
+            return stdout, stderr
+
+        proc.communicate = communicate
+        proc.returncode = returncode
+        proc.stdout.read = AsyncMock(return_value=stdout)
+        proc.stderr.read = AsyncMock(return_value=stderr)
+        proc.kill = lambda: setattr(proc, "returncode", -9)
+        proc.terminate = lambda: setattr(proc, "returncode", -15)
+        proc.wait = AsyncMock(return_value=returncode)
+
+        return proc
+
+    return _make
