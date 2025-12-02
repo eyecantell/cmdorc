@@ -171,6 +171,22 @@ class CommandRunner:
                 mapping[t].append(cmd)
         return mapping
 
+    def _trigger_with_cycle_detection(
+        self,
+        event_name: str,
+        result: RunResult | None = None,
+    ) -> None:
+        """
+        Trigger an event, propagating cycle detection context if available.
+        Args:
+            event_name: The trigger string to fire
+            result: Optional RunResult with _seen list for cycle detection
+        """
+        if result and result._seen is not None:
+            asyncio.create_task(self.trigger(event_name, _seen=result._seen.copy()))
+        else:
+            asyncio.create_task(self.trigger(event_name))
+
     def _resolve_template(self, template: str, *, max_nested_depth: int = 10) -> str:
         """
         Resolve double-brace {{ var }} templates using the same logic as load_config.
@@ -258,6 +274,10 @@ class CommandRunner:
                 result.command_name = cmd.name
                 result._seen = _seen.copy()  # Propagate cycle chain to auto-triggers
                 result.mark_running()
+
+                # Emit command_started event
+                start_trigger = f"command_started:{cmd.name}"
+                self._trigger_with_cycle_detection(start_trigger, result)
 
                 task = asyncio.create_task(self._execute(cmd, result))
                 result.task = task
@@ -379,18 +399,12 @@ class CommandRunner:
 
         # Auto-trigger completion events with propagated seen set (e.g. command_success:XXX, command_failed:XXX)
         trigger_name = f"command_{result.state.value}:{cmd_name}"
-        if result._seen is not None:
-            asyncio.create_task(self.trigger(trigger_name, _seen=result._seen.copy()))
-        else:
-            asyncio.create_task(self.trigger(trigger_name))
+        self._trigger_with_cycle_detection(trigger_name, result)
 
         # If the command finished either success or failure (not cancelled), trigger command_finished:XXX
         if result.state in (RunState.SUCCESS, RunState.FAILED):
             finish_trigger = f"command_finished:{cmd_name}"
-            if result._seen is not None:
-                asyncio.create_task(self.trigger(finish_trigger, _seen=result._seen.copy()))
-            else:
-                asyncio.create_task(self.trigger(finish_trigger))
+            self._trigger_with_cycle_detection(finish_trigger, result)
 
         logger.debug(
             f"Command '{cmd_name}' ({result.run_id}) completed with state: {result.state}. {len(self._live_runs[cmd_name])} runs live. {len(self._history[cmd_name])} runs in history."
