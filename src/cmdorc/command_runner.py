@@ -184,7 +184,7 @@ class CommandRunner:
             current = new
 
         raise RecursionError(
-            f"Exceeded max template expansion depth ({max_depth}) "
+            f"Exceeded max template expansion depth ({max_nested_depth}) "
             f"while resolving template: {template}"
         )
 
@@ -281,7 +281,9 @@ class CommandRunner:
             _seen.pop()
 
     # Execution
-    async def _execute(self, cmd: CommandConfig, result: RunResult, max_nested_depth: int = 10) -> None:
+    async def _execute(
+        self, cmd: CommandConfig, result: RunResult, max_nested_depth: int = 10
+    ) -> None:
         proc = None
         try:
             # --- Resolve command template ---
@@ -493,7 +495,9 @@ class CommandRunner:
     def add_var(self, key: str, value: str) -> None:
         self.vars[key] = value
 
-    def validate_templates(self, strict: bool = False, max_nested_depth: int = 10) -> dict[str, list[str]]:
+    def validate_templates(
+        self, strict: bool = False, max_nested_depth: int = 10
+    ) -> dict[str, list[str]]:
         """Validate all command templates – returns dict of command → list of errors."""
         unresolved: dict[str, list[str]] = {}
         for cmd in self._command_configs.values():

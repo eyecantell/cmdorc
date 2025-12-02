@@ -1,11 +1,13 @@
 # tests/test_command_runner/test_callbacks.py
 import asyncio
+import logging
 
 import pytest
 
 from cmdorc.command_runner import CommandConfig, CommandRunner
-import logging
+
 logging.getLogger("cmdorc").setLevel(logging.DEBUG)
+
 
 @pytest.mark.asyncio
 async def test_on_trigger_and_off_trigger():
