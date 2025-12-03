@@ -5,10 +5,10 @@
 groups = ["default", "test"]
 strategy = ["inherit_metadata"]
 lock_version = "4.5.0"
-content_hash = "sha256:528bceb3cb28e632a5a5fb43f01ecb429e1cf327656686b99fad43ba376918eb"
+content_hash = "sha256:58891531f0f378f990ee078ed31ad03e52e68452ca3c67182133f602a5c69d07"
 
 [[metadata.targets]]
-requires_python = ">=3.9"
+requires_python = ">=3.10"
 
 [[package]]
 name = "backports-asyncio-runner"
@@ -410,6 +410,7 @@ version = "2.3.0"
 requires_python = ">=3.8"
 summary = "A lil' TOML parser"
 groups = ["default", "test"]
+marker = "python_version < \"3.11\""
 files = [
     {file = "tomli-2.3.0-cp311-cp311-macosx_10_9_x86_64.whl", hash = "sha256:88bd15eb972f3664f5ed4b57c1634a97153b4bac4479dcb6a495f41921eb7f45"},
     {file = "tomli-2.3.0-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:883b1c0d6398a6a9d29b508c331fa56adbcdff647f6ace4dfca0f50e90dfd0ba"},

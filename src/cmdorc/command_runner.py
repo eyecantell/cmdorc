@@ -2,130 +2,18 @@
 from __future__ import annotations
 
 import asyncio
-import datetime
 import logging
 import os
-import uuid
 from collections import defaultdict
 from collections.abc import Callable
-from dataclasses import dataclass, field
-from enum import Enum
 
 from .command_config import CommandConfig
+from .command_status import CommandStatus
 from .load_config import resolve_double_brace_vars
+from .run_result import RunResult, RunState
 from .runner_config import RunnerConfig
 
 logger = logging.getLogger(__name__)
-
-
-class RunState(Enum):
-    """State of a single command execution (RunResult)."""
-
-    RUNNING = "running"
-    SUCCESS = "success"
-    FAILED = "failed"
-    CANCELLED = "cancelled"
-
-
-class CommandStatus(Enum):
-    """Effective status of a command in the runner."""
-
-    NEVER_RUN = "never_run"
-    RUNNING = RunState.RUNNING.value
-    SUCCESS = RunState.SUCCESS.value
-    FAILED = RunState.FAILED.value
-    CANCELLED = RunState.CANCELLED.value
-
-
-@dataclass
-class RunResult:
-    run_id: str = field(default_factory=lambda: str(uuid.uuid4()))
-    command_name: str = field(init=False)
-    trigger_event: str | None = None
-
-    output: str = ""
-    success: bool | None = None
-    error: str | None = None
-
-    state: RunState = RunState.RUNNING
-
-    # Timing
-    task: asyncio.Task | None = None
-    start_time: datetime.datetime | None = None
-    end_time: datetime.datetime | None = None
-
-    # Cycle detection propagation
-    _seen: list[str] | None = None
-
-    # Timing helpers
-    @property
-    def duration_secs(self) -> float | None:
-        """Exact duration in seconds (float) or None if not finished."""
-        if self.start_time and self.end_time:
-            return (self.end_time - self.start_time).total_seconds()
-        return None
-
-    @property
-    def duration_str(self) -> str:
-        """Human-readable duration – e.g. '1m 23s', '2.4s', '1h 5m'."""
-        secs = self.duration_secs
-        if secs is None:
-            return "–"
-
-        if secs < 60:
-            return f"{secs:.1f}s"
-
-        mins, secs = divmod(secs, 60)
-        if mins < 60:
-            return f"{int(mins)}m {secs:.0f}s"
-
-        hrs, mins = divmod(mins, 60)
-        return f"{int(hrs)}h {int(mins)}m"
-
-    def cancel(self) -> None:
-        if self.task and not self.task.done():
-            logger.debug(f"Cancelling run for command '{self.command_name}' ({self.run_id})")
-            self.mark_cancelled()
-            self.task.cancel()
-
-    # State transition helpers
-    def mark_running(self) -> None:
-        self.state = RunState.RUNNING
-        self.start_time = datetime.datetime.now()
-        logger.debug(f"Command '{self.command_name}' ({self.run_id}) started at {self.start_time}")
-
-    def mark_success(self) -> None:
-        self.state = RunState.SUCCESS
-        self.success = True
-        self._finalize()
-        logger.debug(f"Command '{self.command_name}' ({self.run_id}) succeeded at {self.end_time}")
-
-    def mark_failed(self, error: str) -> None:
-        self.state = RunState.FAILED
-        self.success = False
-        self.error = error
-        self._finalize()
-        logger.debug(
-            f"Command '{self.command_name}' ({self.run_id}) failed at {self.end_time} with error: {error}"
-        )
-
-    def mark_cancelled(self) -> None:
-        self.state = RunState.CANCELLED
-        self.success = None
-        self.error = "Command was cancelled"
-        self._finalize()
-        logger.debug(f"Command '{self.command_name}' ({self.run_id}) cancelled at {self.end_time}")
-
-    def _finalize(self) -> None:
-        self.end_time = datetime.datetime.now()
-
-    def __repr__(self) -> str:
-        dur = f"{self.duration_secs:.2f}s" if self.duration_secs is not None else "–"
-
-        return (
-            f"RunResult(id={self.run_id[:8]}, cmd='{self.command_name}', "
-            f"state={self.state}, dur={dur}, success={self.success})"
-        )
 
 
 class CommandRunner:
@@ -189,12 +77,19 @@ class CommandRunner:
 
     def _resolve_template(self, template: str, *, max_nested_depth: int = 10) -> str:
         """
-        Resolve double-brace {{ var }} templates using the same logic as load_config.
+        Resolve double-brace {{ var }} templates using the runner's vars.
+        Supports nested replacements up to `max_depth` to avoid infinite loops.
+        """
+        return self._resolve_template_with_vars(template, self.vars, max_nested_depth=max_nested_depth)
+    
+    def _resolve_template_with_vars(self, template: str, vars_dict: dict[str, str], *, max_nested_depth: int = 10) -> str:
+        """
+        Resolve double-brace {{ var }} templates using provided vars dict.
         Supports nested replacements up to `max_depth` to avoid infinite loops.
         """
         current = template
         for _ in range(max_nested_depth):
-            new = resolve_double_brace_vars(current, self.vars, max_depth=max_nested_depth)
+            new = resolve_double_brace_vars(current, vars_dict, max_depth=max_nested_depth)
             if new == current:
                 return new
             current = new
@@ -204,9 +99,10 @@ class CommandRunner:
             f"while resolving template: {template}"
         )
     
-    def _handle_retrigger_policy(self, cmd: CommandConfig) -> bool:
+    def _should_start_new_run(self, cmd: CommandConfig) -> bool:
         """
-        Apply the command's retrigger policy when a new run is requested.
+        Check if a new run should start based on the command's retrigger policy.
+        Side effect: Cancels existing runs if policy is 'cancel_and_restart'.
         
         Returns:
             True  → proceed with starting the new run
@@ -232,12 +128,21 @@ class CommandRunner:
         
         return True
 
-    async def run_command(self, name: str, **override_vars: str) -> RunResult:
+    def run_command(
+        self, 
+        name: str, 
+        *,
+        trigger_event: str | None = None,
+        _seen: list[str] | None = None,
+        **override_vars: str
+    ) -> RunResult:
         """
-        Directly execute a command by name — the ergonomic way to run commands manually.
+        Start a command execution and return immediately with the RunResult.
 
-        This bypasses the need for the command name to appear in its own ``triggers`` list.
-        All normal safety features remain active:
+        This is fire-and-forget — the command runs in the background.
+        To wait for completion: `result = runner.run_command('test'); await result.task`
+
+        All safety features remain active:
         - concurrency limits / retrigger policy
         - cancel_on_triggers
         - timeout
@@ -245,18 +150,17 @@ class CommandRunner:
         - command_started / command_success / etc. auto-events (with full cycle detection)
         - template variable resolution
 
-        This is the method you should reach for in hotkeys, UI buttons, or LLM agents.
-
         Args:
             name: Exact command name.
+            trigger_event: Optional trigger that caused this run (for debugging).
+            _seen: Internal cycle detection chain (do not use directly).
             **override_vars: One-shot template variable overrides for this run only.
 
         Returns:
-            The final RunResult.
+            RunResult with a .task you can await if needed.
 
         Raises:
-            ValueError: If the command does not exist.
-            RuntimeError: If something truly unexpected happens (should never occur).
+            ValueError: If command doesn't exist or retrigger policy prevents start.
         """
         if name not in self._command_configs:
             known = ", ".join(sorted(self._command_configs.keys()))
@@ -264,65 +168,35 @@ class CommandRunner:
                 f"Command '{name}' not found. Available: {known or '(none)'}"
             )
 
-        # ---- One-shot variable overrides (very useful!) ----
-        old_vars = {}
-        if override_vars:
-            old_vars = {k: self.vars.get(k) for k in override_vars}
-            self.set_vars(override_vars)
-
         cmd = self._command_configs[name]
-        if not self._handle_retrigger_policy(cmd):
-            raise ValueError(
-                f"Command '{name}' is already running and on_retrigger='ignore'. "
-                "Use run_command_async() if you want fire-and-forget."
-            )
         
-        try:
-            # ---- Re-use the exact same execution path that trigger() uses ----
-            # This gives us all concurrency/retrigger/cancellation logic for free.
-            result = RunResult(trigger_event=f"run_command:{name}")
-            result.command_name = name
-            result.mark_running()
-
-            # Emit command_started (cycle detection starts here)
-            self._trigger_with_cycle_detection(f"command_started:{name}", result)
-
-            task = asyncio.create_task(self._execute(cmd, result))
-            result.task = task
-            task.add_done_callback(
-                lambda t, n=name, r=result: self._task_completed(n, r)
+        # Check retrigger policy
+        if not self._should_start_new_run(cmd):
+            raise ValueError(
+                f"Command '{name}' is already running and on_retrigger='ignore'."
             )
 
-            self._live_runs[name].append(result)
+        # Create result with merged variables (runner vars + overrides)
+        result = RunResult(trigger_event=trigger_event or f"run_command:{name}")
+        result.command_name = name
+        result._seen = _seen.copy() if _seen else None
+        result.vars = {**self.vars, **override_vars}  # Snapshot variables for this run
+        result.mark_running()
 
-            # Wait for completion (user almost always wants the result)
-            await task  # Just await the actual task — simple and safe
-            return result
+        # Emit command_started (cycle detection starts here)
+        self._trigger_with_cycle_detection(f"command_started:{name}", result)
 
-        finally:
-            # Restore original variables
-            if override_vars:
-                for k in override_vars:
-                    self.vars.pop(k, None)
-                self.vars.update({k: v for k, v in old_vars.items() if v is not None})
+        # Start execution task
+        task = asyncio.create_task(self._execute(cmd, result))
+        result.task = task
+        task.add_done_callback(
+            lambda t, n=name, r=result: self._task_completed(n, r)
+        )
 
+        self._live_runs[name].append(result)
+        
+        return result
 
-    def run_command_async(self, name: str, **override_vars: str) -> None:
-        """Fire-and-forget. Ignores 'ignore' policy — always attempts to start."""
-        cmd = self._command_configs[name]
-        live = self._live_runs[name]
-
-        if cmd.max_concurrent > 0 and len(live) >= cmd.max_concurrent:
-            if cmd.on_retrigger == "ignore":
-                logger.debug(f"run_command_async: ignoring '{name}' (already running)")
-                return
-            # still cancel_and_restart
-            for run in live:
-                run.cancel()
-
-        # Always start (this is the point of _async)
-        asyncio.create_task(self.run_command(name, **override_vars))
-            
     # Trigger registration
     def on_trigger(self, trigger_name: str, callback: Callable[[dict | None], None]):
         logger.debug(f"Registering callback for trigger: '{trigger_name}'")
@@ -360,49 +234,24 @@ class CommandRunner:
         _seen.append(event_name)
 
         try:
-            # ---- Cancel commands with this trigger in cancel_on_triggers ----
-            # Cancel commands that have this trigger in cancel_on_triggers
+            # ---- Cancel commands that have this trigger in cancel_on_triggers ----
             for cmd in self._cancel_trigger_map.get(event_name, []):
                 for run in self._live_runs[cmd.name]:
                     run.cancel()
 
-            # ---- Command dispatch for matching triggers --------------------------------
+            # ---- Command dispatch for matching triggers ----
             for cmd in self._trigger_map.get(event_name, []):
-                live = self._live_runs[cmd.name]
-                logger.debug(
-                    f"Evaluating command '{cmd.name}' for trigger '{event_name}': {len(live)} live runs"
-                )
+                try:
+                    self.run_command(
+                        cmd.name,
+                        trigger_event=event_name,
+                        _seen=_seen
+                    )
+                except ValueError as e:
+                    # Command couldn't start (e.g., on_retrigger='ignore')
+                    logger.debug(f"Skipping command '{cmd.name}': {e}")
 
-                # Concurrency / retrigger policy
-                if cmd.max_concurrent > 0 and len(live) >= cmd.max_concurrent:
-                    if cmd.on_retrigger == "ignore":
-                        continue
-                    # cancel_and_restart
-                    for run in live:
-                        logger.debug(
-                            f"Cancelling command '{cmd.name}' ({run.run_id}) due to retrigger policy 'cancel_and_restart'"
-                        )
-                        run.cancel()
-
-                # ---- Start new run -------------------------------------------------
-                result = RunResult(trigger_event=event_name)
-                result.command_name = cmd.name
-                result._seen = _seen.copy()  # Propagate cycle chain to auto-triggers
-                result.mark_running()
-
-                # Emit command_started event
-                start_trigger = f"command_started:{cmd.name}"
-                self._trigger_with_cycle_detection(start_trigger, result)
-
-                task = asyncio.create_task(self._execute(cmd, result))
-                result.task = task
-                task.add_done_callback(
-                    lambda t, name=cmd.name, res=result: self._task_completed(name, res)
-                )
-
-                self._live_runs[cmd.name].append(result)
-
-            # ---- External callbacks -----------------------------------------------
+            # ---- External callbacks ----
             for cb in self._callbacks.get(event_name, []):
                 try:
                     if asyncio.iscoroutinefunction(cb):
@@ -417,12 +266,19 @@ class CommandRunner:
 
     # Execution
     async def _execute(
-        self, cmd: CommandConfig, result: RunResult, max_nested_depth: int = 10
+        self, 
+        cmd: CommandConfig, 
+        result: RunResult,
+        max_nested_depth: int = 10
     ) -> None:
         proc = None
         try:
-            # --- Resolve command template ---
-            resolved_cmd = self._resolve_template(cmd.command, max_nested_depth=max_nested_depth)
+            # --- Resolve command template using result's vars ---
+            resolved_cmd = self._resolve_template_with_vars(
+                cmd.command, 
+                result.vars,
+                max_nested_depth=max_nested_depth
+            )
             logger.debug(f"Executing '{cmd.name}': {resolved_cmd}")
 
             # --- Start subprocess ---
@@ -430,7 +286,7 @@ class CommandRunner:
                 resolved_cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
-                cwd=self.vars["base_directory"],
+                cwd=result.vars["base_directory"],
             )
 
             # --- Communicate with timeout (this handles wait + I/O together) ---
@@ -483,56 +339,43 @@ class CommandRunner:
         # Validate state transition
         if result.state == RunState.RUNNING:
             raise ValueError(
-                f"Command '{cmd_name}' ({result.run_id}) completed but result state is still RUNNING - should have been changed before calling _task_completed"
+                f"Command '{cmd_name}' ({result.run_id}) completed but result state is still RUNNING"
             )
 
-        # Remove from live runs - if not found, this is a duplicate callback
+        # Remove from live runs
         initial_count = len(self._live_runs[cmd_name])
         self._live_runs[cmd_name] = [
             r for r in self._live_runs[cmd_name] if r.run_id != result.run_id
         ]
 
         if len(self._live_runs[cmd_name]) == initial_count:
-            # Run wasn't in live_runs, must be duplicate callback
             logger.debug(
                 f"Ignoring duplicate completion callback for '{cmd_name}' ({result.run_id})"
             )
             return
 
-        # Store in history (with retention)
+        # Store in history
         cfg = self._command_configs[cmd_name]
-
         if cfg.keep_history > 0:
             self._history[cmd_name].append(result)
-
             if len(self._history[cmd_name]) > cfg.keep_history:
-                # Retain only the most recent runs as per keep_history setting
                 logger.debug(
                     f"Trimming history for command '{cmd_name}' to last {cfg.keep_history} runs"
                 )
                 self._history[cmd_name] = self._history[cmd_name][-cfg.keep_history :]
 
-        # Auto-trigger completion events with propagated seen set (e.g. command_success:XXX, command_failed:XXX)
+        # Auto-trigger completion events
         trigger_name = f"command_{result.state.value}:{cmd_name}"
         self._trigger_with_cycle_detection(trigger_name, result)
 
-        # If the command finished either success or failure (not cancelled), trigger command_finished:XXX
         if result.state in (RunState.SUCCESS, RunState.FAILED):
             finish_trigger = f"command_finished:{cmd_name}"
             self._trigger_with_cycle_detection(finish_trigger, result)
 
         logger.debug(
-            f"Command '{cmd_name}' ({result.run_id}) completed with state: {result.state}. {len(self._live_runs[cmd_name])} runs live. {len(self._history[cmd_name])} runs in history."
+            f"Command '{cmd_name}' ({result.run_id}) completed with state: {result.state}. "
+            f"{len(self._live_runs[cmd_name])} runs live. {len(self._history[cmd_name])} runs in history."
         )
-        if len(self._live_runs[cmd_name]) > 0:
-            logger.debug(
-                f"Command '{cmd_name}' ({result.run_id}) live runs are {[i.run_id + ': ' + i.state.value for i in self._live_runs[cmd_name]]}"
-            )
-        if len(self._history[cmd_name]) > 0:
-            logger.debug(
-                f"Command '{cmd_name}' ({result.run_id}) history is {[i.run_id + ': ' + i.state.value for i in self._history[cmd_name]]}"
-            )
-        logger.debug(f"Auto-triggered '{trigger_name}' with inherited cycle detection")
 
     # Control
     def cancel_command(self, name: str) -> None:
@@ -632,7 +475,7 @@ class CommandRunner:
     def validate_templates(
         self, strict: bool = False, max_nested_depth: int = 10
     ) -> dict[str, list[str]]:
-        """Validate all command templates – returns dict of command → list of errors."""
+        """Validate all command templates — returns dict of command → list of errors."""
         unresolved: dict[str, list[str]] = {}
         for cmd in self._command_configs.values():
             try:
@@ -664,10 +507,11 @@ class CommandRunner:
             current = self.get_status(name)
             if current in status:
                 logger.debug(
-                    f"Command '{name}' ({self.get_result(name).run_id if self.get_result(name) else 'unknown'}) reached status: {current} after {asyncio.get_event_loop().time() - start:.2f}s"
+                    f"Command '{name}' reached status: {current} after "
+                    f"{asyncio.get_event_loop().time() - start:.2f}s"
                 )
                 return True
-            await asyncio.sleep(0.01)  # 10ms polling – fast and responsive
+            await asyncio.sleep(0.01)
         return False
 
     async def wait_for_running(self, name: str, timeout: float = 5.0) -> bool:
