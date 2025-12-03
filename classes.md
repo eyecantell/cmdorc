@@ -257,3 +257,9 @@ class NewRunDecision:
 @dataclass
 class TriggerContext:
     seen: set[str] = field(default_factory=set)
+
+@dataclass(frozen=True)
+class CommandStatus:
+    state: str
+    active_count: int = 0
+    last_run: RunResult | None = None
