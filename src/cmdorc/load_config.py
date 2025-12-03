@@ -10,8 +10,7 @@ try:
 except ImportError:
     import tomli  # <3.11
 
-from .command_config import CommandConfig
-from .runner_config import RunnerConfig
+from .command_config import CommandConfig, RunnerConfig
 
 logger = logging.getLogger(__name__)
 

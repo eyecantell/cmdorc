@@ -223,6 +223,8 @@ async def handler(run_handle: RunHandle | None, context: Any | None) -> None:
 ### `ExecutionPolicy`
 
 * `decide(config: CommandConfig, active_runs: list[RunResult]) -> NewRunDecision`
+* `should_run_on_trigger(self, config: CommandConfig, trigger_event: str) -> bool`
+* `should_cancel_on_trigger(self, config: CommandConfig, trigger_event: str) -> bool`
 
 ### `TriggerEngine`
 

@@ -32,11 +32,11 @@ class RunResult:
     # ------------------------------------------------------------------ #
     # Identification
     # ------------------------------------------------------------------ #
+    command_name: str
+    """Name of the command being executed."""
+
     run_id: str = field(default_factory=lambda: str(__import__("uuid").uuid4()))
     """Unique identifier for this run."""
-
-    command_name: str = field(init=False)
-    """Name of the command being executed."""
 
     trigger_event: str | None = None
     """Event that triggered this run (e.g. "file_saved", "Tests")."""
@@ -76,6 +76,9 @@ class RunResult:
 
     resolved_timeout_secs: int | None = None
     """Effective timeout value applied to this run (after resolution, if any)."""
+
+    resolved_command: str | None = None
+    """Command after variable resolution."""
 
     # ------------------------------------------------------------------ #
     # Async completion signalling

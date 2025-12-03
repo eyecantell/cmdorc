@@ -89,3 +89,25 @@ class CommandConfig:
             except OSError as e:
                 logger.warning(f"Invalid config for '{self.name}': Invalid cwd: {e}")
                 raise ValueError(f"Invalid cwd for '{self.name}': {e}")
+            
+
+
+@dataclass(frozen=True)
+class RunnerConfig:
+    """
+    Top-level configuration object returned by load_config().
+    Contains everything needed to instantiate a CommandRunner.
+    """
+
+    commands: list[CommandConfig]
+
+    vars: dict[str, str] = field(default_factory=dict)
+    """
+    Global template variables.
+    Example: {"base_directory": "/home/me/project", "tests_directory": "{{ base_directory }}/tests"}
+    These act as defaults and can be overridden at runtime via CommandRunner.add_var()/set_vars().
+    """
+
+    def __post_init__(self) -> None:
+        if not self.commands:
+            raise ValueError("At least one command is required")
