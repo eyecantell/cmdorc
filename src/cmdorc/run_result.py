@@ -58,7 +58,6 @@ class RunResult:
     # ------------------------------------------------------------------ #
     # Timing
     # ------------------------------------------------------------------ #
-    task: asyncio.Task | None = None
     start_time: datetime.datetime | None = None
     end_time: datetime.datetime | None = None
     duration: datetime.timedelta | None = None
@@ -83,12 +82,6 @@ class RunResult:
     # ------------------------------------------------------------------ #
     future: asyncio.Future["RunResult"] = field(default_factory=asyncio.Future)
     """Future resolved when the run finishes (used by RunHandle.wait())."""
-
-    # ------------------------------------------------------------------ #
-    # Init
-    # ------------------------------------------------------------------ #
-    def __init__(self, command_name: str) -> None:
-        self.command_name = command_name
 
     # ------------------------------------------------------------------ #
     # State transitions
@@ -136,15 +129,9 @@ class RunResult:
         else:
             self.duration = datetime.timedelta(0)
 
-        if self.state is RunState.SUCCESS:
-            if not self.future.done():
-                self.future.set_result(self)
-        else:
-            exc = self.error
-            if not isinstance(exc, Exception):
-                exc = RuntimeError(str(exc or "Unknown error"))
-            if not self.future.done():
-                self.future.set_exception(exc)
+        # Callers check result.state/success to determine outcome
+        if not self.future.done():
+            self.future.set_result(self)
 
     # ------------------------------------------------------------------ #
     # Timing properties

@@ -53,7 +53,7 @@ class CommandConfig:
     keep_history: int = 1
     """
     How many past RunResult objects to keep.
-    0 = keep none (only latest via get_result())
+    0 = no history (but latest_result is always tracked separately)
     1 = keep only the most recent (default)
     N = keep last N runs
     """

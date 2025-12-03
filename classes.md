@@ -95,7 +95,7 @@ cancel_on_triggers: list[str] = []
 max_concurrent: int = 1                 # 0 = unlimited
 timeout_secs: int | None = None
 on_retrigger: Literal["cancel_and_restart", "ignore"] = "cancel_and_restart"
-keep_history: int = 1                    # 0 = keep none (only latest_result)
+keep_history: int = 1                    # 0 = no history (but latest_result is always tracked separately)
 vars: dict[str, str] = {}
 cwd: str | Path | None = None
 env: dict[str, str] = {}
