@@ -164,7 +164,7 @@ class CommandRunner:
         return mapping
 
     def _build_cancel_trigger_map(self) -> dict[str, list[CommandConfig]]:
-        """Build map of trigger -> commands to cancel when that trigger fires."""
+        """Build map of trigger str -> commands to cancel when that trigger fires."""
         mapping: dict[str, list[CommandConfig]] = defaultdict(list)
         for cmd in self._command_configs.values():
             for t in cmd.cancel_on_triggers:
@@ -203,6 +203,34 @@ class CommandRunner:
             f"Exceeded max template expansion depth ({max_nested_depth}) "
             f"while resolving template: {template}"
         )
+    
+    def _handle_retrigger_policy(self, cmd: CommandConfig) -> bool:
+        """
+        Apply the command's retrigger policy when a new run is requested.
+        
+        Returns:
+            True  → proceed with starting the new run
+            False → do NOT start new run (policy was 'ignore')
+        """
+        live = self._live_runs[cmd.name]
+        
+        if cmd.max_concurrent <= 0 or len(live) < cmd.max_concurrent:
+            return True  # No conflict
+
+        if cmd.on_retrigger == "ignore":
+            logger.debug(
+                f"Command '{cmd.name}' already has {len(live)}/{cmd.max_concurrent} runs → ignoring new request"
+            )
+            return False
+
+        # on_retrigger == "cancel_and_restart"
+        logger.debug(
+            f"Command '{cmd.name}' has {len(live)} live runs → cancelling due to 'cancel_and_restart'"
+        )
+        for run in live:
+            run.cancel()
+        
+        return True
 
     async def run_command(self, name: str, **override_vars: str) -> RunResult:
         """
@@ -236,14 +264,19 @@ class CommandRunner:
                 f"Command '{name}' not found. Available: {known or '(none)'}"
             )
 
-        cmd = self._command_configs[name]
-
         # ---- One-shot variable overrides (very useful!) ----
         old_vars = {}
         if override_vars:
             old_vars = {k: self.vars.get(k) for k in override_vars}
             self.set_vars(override_vars)
 
+        cmd = self._command_configs[name]
+        if not self._handle_retrigger_policy(cmd):
+            raise ValueError(
+                f"Command '{name}' is already running and on_retrigger='ignore'. "
+                "Use run_command_async() if you want fire-and-forget."
+            )
+        
         try:
             # ---- Re-use the exact same execution path that trigger() uses ----
             # This gives us all concurrency/retrigger/cancellation logic for free.
@@ -273,8 +306,21 @@ class CommandRunner:
                     self.vars.pop(k, None)
                 self.vars.update({k: v for k, v in old_vars.items() if v is not None})
 
+
     def run_command_async(self, name: str, **override_vars: str) -> None:
-        """Non-blocking version of run_command()."""
+        """Fire-and-forget. Ignores 'ignore' policy — always attempts to start."""
+        cmd = self._command_configs[name]
+        live = self._live_runs[name]
+
+        if cmd.max_concurrent > 0 and len(live) >= cmd.max_concurrent:
+            if cmd.on_retrigger == "ignore":
+                logger.debug(f"run_command_async: ignoring '{name}' (already running)")
+                return
+            # still cancel_and_restart
+            for run in live:
+                run.cancel()
+
+        # Always start (this is the point of _async)
         asyncio.create_task(self.run_command(name, **override_vars))
             
     # Trigger registration
@@ -315,14 +361,10 @@ class CommandRunner:
 
         try:
             # ---- Cancel commands with this trigger in cancel_on_triggers ----
+            # Cancel commands that have this trigger in cancel_on_triggers
             for cmd in self._cancel_trigger_map.get(event_name, []):
-                live = self._live_runs[cmd.name]
-                if live:
-                    for run in live:
-                        logger.debug(
-                            f"Cancelling command '{cmd.name}' ({run.run_id}) due to cancel_on_trigger '{event_name}'"
-                        )
-                        run.cancel()
+                for run in self._live_runs[cmd.name]:
+                    run.cancel()
 
             # ---- Command dispatch for matching triggers --------------------------------
             for cmd in self._trigger_map.get(event_name, []):

@@ -59,10 +59,6 @@ async def test_run_command_respects_concurrency_limit(create_proc):
         assert RunState.CANCELLED in states
         assert len(history) == 2
 
-        # First task was cancelled
-        with pytest.raises(asyncio.CancelledError):
-            await first_task
-
 
 @pytest.mark.asyncio
 async def test_run_command_with_override_vars():

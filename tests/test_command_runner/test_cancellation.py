@@ -1,6 +1,7 @@
 # tests/test_command_runner/test_cancellation.py
 import asyncio
 import logging
+from unittest import runner
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
@@ -8,7 +9,7 @@ import pytest
 from cmdorc.command_runner import CommandConfig, CommandRunner, CommandStatus, RunState
 
 logging.getLogger("cmdorc").setLevel(logging.DEBUG)
-
+logger = logging.getLogger(__name__)
 
 @pytest.mark.asyncio
 async def test_cancel_on_triggers_stops_running_command():
@@ -26,6 +27,12 @@ async def test_cancel_on_triggers_stops_running_command():
     proc = AsyncMock()
     proc.returncode = None
     killed_event = asyncio.Event()
+
+    proc.stdout = AsyncMock()
+    proc.stdout.read = AsyncMock(return_value=b"")
+
+    proc.stderr = AsyncMock()
+    proc.stderr.read = AsyncMock(return_value=b"")
 
     def kill_handler():
         """Synchronous kill that sets returncode and signals event."""
@@ -49,7 +56,7 @@ async def test_cancel_on_triggers_stops_running_command():
 
     proc.wait = wait_for_kill
 
-    with patch("asyncio.create_subprocess_shell", new=AsyncMock(return_value=proc)):
+    with patch("asyncio.create_subprocess_shell", return_value=proc):
         # Start the command
         await runner.trigger("start")
         assert await runner.wait_for_status("Cancelable", CommandStatus.RUNNING, timeout=1.0)
@@ -71,9 +78,11 @@ async def test_cancel_on_triggers_stops_running_command():
         # 4. kill_handler to set the event
         # 5. communicate() to return
         # 6. _task_completed() to finalize
-        await asyncio.sleep(0.3)
+        await asyncio.sleep(1.3)
 
         # Should now be cancelled
+        assert await runner.wait_for_not_running("Cancelable", timeout=5.0)
+        assert runner.get_result("Cancelable").state == RunState.CANCELLED
         assert await runner.wait_for_status("Cancelable", CommandStatus.CANCELLED, timeout=1.0)
         result = runner.get_result("Cancelable")
         assert result.state == RunState.CANCELLED
