@@ -1,23 +1,27 @@
 # cmdorc/command_status.py
 from __future__ import annotations
 
-from enum import Enum
+from dataclasses import dataclass
 
-from .run_result import RunState
+from .run_result import RunResult, RunState
 
 
-class CommandStatus(Enum):
+@dataclass(frozen=True)
+class CommandStatus:
     """
-    Effective status of a command in the runner.
-    
-    This represents the overall state of a command, taking into account:
-    - Whether it's currently running
-    - The state of its most recent completed run
-    - Whether it has ever been run
+    Derived status of a command, returned by CommandRuntime.get_status().
+
+    Provides a high-level view for UI/TUI status icons, queries, etc.
+    - If active_runs > 0 → state = "running"
+    - Else if latest_result → state = latest_result.state.value
+    - Else → state = "never_run"
     """
-    
-    NEVER_RUN = "never_run"
-    IDLE_SUCCESS = "idle_success"      # last run succeeded
-    IDLE_FAILED = "idle_failed"        # last run failed
-    IDLE_CANCELLED = "idle_cancelled"
-    RUNNING = "running"
+
+    state: str
+    """Overall state: 'never_run', 'running', or a RunState value ('success', 'failed', 'cancelled')."""
+
+    active_count: int = 0
+    """Number of currently running instances (from max_concurrent)."""
+
+    last_run: RunResult | None = None
+    """The most recent completed RunResult (or None if never run)."""
