@@ -1,8 +1,10 @@
 from __future__ import annotations
-
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Literal
+import logging
 
+logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class CommandConfig:
@@ -32,9 +34,9 @@ class CommandConfig:
     max_concurrent: int = 1
     """
     Maximum number of concurrent instances allowed.
-    1  → normal single-instance behaviour
     0  → unlimited parallelism
-    >1 → explicit parallelism (rare)
+    1  → normal single-instance behaviour (default)
+    >1 → explicit parallelism
     """
 
     timeout_secs: int | None = None
@@ -56,16 +58,34 @@ class CommandConfig:
     N = keep last N runs
     """
 
+    vars: dict[str, str] = field(default_factory=dict)
+    """Command-specific template vars (overrides globals from RunnerConfig.vars)."""
+
+    cwd: str | Path | None = None
+    """Optional working directory for the command (absolute or relative to config file)."""
+
+    env: dict[str, str] = field(default_factory=dict)
+    """Environment variables to set for the command (merged with os.environ)."""
+
     def __post_init__(self) -> None:
         if not self.name:
+            logger.warning(f"Invalid config: Command name cannot be empty")
             raise ValueError("Command name cannot be empty")
         if not self.command.strip():
+            logger.warning(f"Invalid config for '{self.name}': Command cannot be empty")
             raise ValueError(f"Command for '{self.name}' cannot be empty")
         if self.max_concurrent < 0:
+            logger.warning(f"Invalid config for '{self.name}': max_concurrent cannot be negative")
             raise ValueError("max_concurrent cannot be negative")
         if self.timeout_secs is not None and self.timeout_secs <= 0:
+            logger.warning(f"Invalid config for '{self.name}': timeout_secs must be positive")
             raise ValueError("timeout_secs must be positive")
-
-        # Validate Literal on_retrigger
         if self.on_retrigger not in ("cancel_and_restart", "ignore"):
+            logger.warning(f"Invalid config for '{self.name}': on_retrigger must be 'cancel_and_restart' or 'ignore'")
             raise ValueError("on_retrigger must be 'cancel_and_restart' or 'ignore'")
+        if self.cwd is not None:
+            try:
+                Path(self.cwd).resolve()
+            except OSError as e:
+                logger.warning(f"Invalid config for '{self.name}': Invalid cwd: {e}")
+                raise ValueError(f"Invalid cwd for '{self.name}': {e}")
