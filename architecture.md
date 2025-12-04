@@ -261,7 +261,7 @@ async def handler(run_handle: RunHandle | None, context: Any | None) -> None:
 
 ---
 
-# 9. Executor Architecture (Swappable) & `ResolvedCommand`
+# 9. Executor Architecture (Swappable)
 
 `CommandExecutor` is an abstract base class (ABC). Implementations include `LocalSubprocessExecutor` (default) and test/mock/external executors.
 

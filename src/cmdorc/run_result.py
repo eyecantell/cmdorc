@@ -30,6 +30,15 @@ class ResolvedCommand:
     timeout_secs: int | None
     vars: dict[str, str]
 
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to JSON-serializable dict."""
+        return {
+            "command": self.command,
+            "cwd": self.cwd,
+            "env": self.env.copy(), 
+            "timeout_secs": self.timeout_secs,
+            "vars": self.vars.copy(),
+        }
 
 @dataclass
 class RunResult:
@@ -82,7 +91,7 @@ class RunResult:
     # ------------------------------------------------------------------ #
     # Async completion signalling
     # ------------------------------------------------------------------ #
-    future: asyncio.Future["RunResult"] = field(default_factory=asyncio.Future)
+    future: asyncio.Future["RunResult"] = field(default_factory=asyncio.Future, init=False)
     """Future resolved when the run finishes (used by RunHandle.wait())."""
 
     # ------------------------------------------------------------------ #
