@@ -198,8 +198,5 @@ class RunResult:
             "end_time": self.end_time.isoformat() if self.end_time else None,
             "duration_ms": self.duration_ms,
             "duration_str": self.duration_str,
-            "resolved_vars": self.resolved_vars.copy(),
-            "resolved_env_keys": list(self.resolved_env.keys()),  # Don't dump full env by default
-            "resolved_cwd": self.resolved_cwd,
-            "resolved_timeout_secs": self.resolved_timeout_secs,
+            "resolved_command": self.resolved_command.to_dict() if self.resolved_command else None,
         }
