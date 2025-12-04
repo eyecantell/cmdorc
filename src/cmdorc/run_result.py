@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 
 class RunState(Enum):
     """Possible states of a command execution."""
+
     PENDING = "pending"
     RUNNING = "running"
     SUCCESS = "success"
@@ -20,10 +21,10 @@ class RunState(Enum):
     CANCELLED = "cancelled"
 
 
-
 @dataclass(frozen=True)
 class ResolvedCommand:
     """Snapshot of resolved command settings at execution time."""
+
     command: str
     cwd: str | None
     env: dict[str, str]
@@ -35,10 +36,11 @@ class ResolvedCommand:
         return {
             "command": self.command,
             "cwd": self.cwd,
-            "env": self.env.copy(), 
+            "env": self.env.copy(),
             "timeout_secs": self.timeout_secs,
             "vars": self.vars.copy(),
         }
+
 
 @dataclass
 class RunResult:
@@ -91,7 +93,8 @@ class RunResult:
     # ------------------------------------------------------------------ #
     # Async completion signalling
     # ------------------------------------------------------------------ #
-    future: asyncio.Future["RunResult"] = field(default_factory=asyncio.Future, init=False)
+    future: asyncio.Future = field(default_factory=lambda: asyncio.get_event_loop().create_future())
+
     """Future resolved when the run finishes (used by RunHandle.wait())."""
 
     # ------------------------------------------------------------------ #
@@ -99,8 +102,6 @@ class RunResult:
     # ------------------------------------------------------------------ #
     def mark_running(self) -> None:
         """Transition to RUNNING and record start time."""
-        if self.state is not RunState.PENDING:
-            logger.warning(f"Run {self.run_id} marked running from invalid state {self.state}")
         self.state = RunState.RUNNING
         self.start_time = datetime.datetime.now()
         logger.debug(f"Run {self.run_id} ('{self.command_name}') started")

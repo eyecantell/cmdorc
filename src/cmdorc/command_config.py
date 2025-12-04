@@ -6,6 +6,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
 @dataclass(frozen=True)
 class CommandConfig:
     """
@@ -96,7 +97,9 @@ class CommandConfig:
             logger.warning(f"Invalid config for '{self.name}': timeout_secs must be positive")
             raise ValueError("timeout_secs must be positive")
         if self.on_retrigger not in ("cancel_and_restart", "ignore"):
-            logger.warning(f"Invalid config for '{self.name}': on_retrigger must be 'cancel_and_restart' or 'ignore'")
+            logger.warning(
+                f"Invalid config for '{self.name}': on_retrigger must be 'cancel_and_restart' or 'ignore'"
+            )
             raise ValueError("on_retrigger must be 'cancel_and_restart' or 'ignore'")
         if self.cwd is not None:
             try:
@@ -104,7 +107,6 @@ class CommandConfig:
             except OSError as e:
                 logger.warning(f"Invalid config for '{self.name}': Invalid cwd: {e}")
                 raise ValueError(f"Invalid cwd for '{self.name}': {e}")
-            
 
 
 @dataclass(frozen=True)

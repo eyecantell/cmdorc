@@ -58,6 +58,7 @@ def create_proc():
         with patch("asyncio.create_subprocess_shell", return_value=proc):
             ...
     """
+
     def _make(stdout=b"", stderr=b"", returncode=0, delay=0.0):
         proc = AsyncMock()
 

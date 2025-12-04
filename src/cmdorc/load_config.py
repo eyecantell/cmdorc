@@ -63,7 +63,7 @@ def resolve_double_brace_vars(value: str, vars_dict: dict[str, str], *, max_dept
 def validate_trigger(name: str) -> str:
     """
     Validate a trigger name.
-    Must be non-empty and contain only alphanumerics, underscores, hyphens, or wildcards (*).   
+    Must be non-empty and contain only alphanumerics, underscores, hyphens, or wildcards (*).
     """
 
     if not name:

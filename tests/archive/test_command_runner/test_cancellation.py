@@ -11,6 +11,7 @@ from cmdorc.command_runner import CommandConfig, CommandRunner, CommandStatus, R
 logging.getLogger("cmdorc").setLevel(logging.DEBUG)
 logger = logging.getLogger(__name__)
 
+
 @pytest.mark.asyncio
 async def test_cancel_on_triggers_stops_running_command():
     """Test that cancel_on_triggers actually cancels running commands."""

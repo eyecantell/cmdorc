@@ -6,7 +6,9 @@ import pytest
 
 from cmdorc.command_runner import CommandConfig, CommandRunner, CommandStatus, RunState
 import logging
+
 logging.getLogger("cmdorc").setLevel(logging.DEBUG)
+
 
 @pytest.mark.asyncio
 async def test_run_command_basic_success(create_proc):
@@ -79,7 +81,9 @@ async def test_run_command_with_override_vars():
         # Check that override vars were used
         proc.communicate.assert_called_once()
         # The actual command passed to shell
-        actual_cmd = proc.communicate.call_args[0][0]  # Not directly accessible, but we can check via side effect
+        actual_cmd = proc.communicate.call_args[0][
+            0
+        ]  # Not directly accessible, but we can check via side effect
         # Instead: verify output contains resolved values
         assert "Hola amigo" in result.output.strip()
 

@@ -6,6 +6,7 @@ import pytest
 
 from cmdorc.command_runner import CommandConfig, CommandRunner, CommandStatus
 import logging
+
 logging.getLogger("cmdorc").setLevel(logging.DEBUG)
 
 
