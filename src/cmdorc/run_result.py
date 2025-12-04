@@ -1,7 +1,6 @@
 # cmdorc/run_result.py
 from __future__ import annotations
 
-import asyncio
 import datetime
 import logging
 from dataclasses import dataclass, field
@@ -47,8 +46,11 @@ class RunResult:
     """
     Represents a single execution of a command.
 
-    Internal mutable object used by CommandRuntime and CommandExecutor.
+    Pure data container used by CommandRuntime and CommandExecutor.
     Users interact with it via the public RunHandle façade.
+    
+    Note: This is mutable to allow state transitions during execution,
+    but should be treated as immutable once is_finished=True.
     """
 
     # ------------------------------------------------------------------ #
@@ -91,27 +93,20 @@ class RunResult:
     """Command settings after variable resolution."""
 
     # ------------------------------------------------------------------ #
-    # Async completion signalling
-    # ------------------------------------------------------------------ #
-    future: asyncio.Future = field(default_factory=lambda: asyncio.get_event_loop().create_future())
-
-    """Future resolved when the run finishes (used by RunHandle.wait())."""
-
-    # ------------------------------------------------------------------ #
     # State transitions
     # ------------------------------------------------------------------ #
     def mark_running(self) -> None:
         """Transition to RUNNING and record start time."""
         self.state = RunState.RUNNING
         self.start_time = datetime.datetime.now()
-        logger.debug(f"Run {self.run_id} ('{self.command_name}') started")
+        logger.debug(f"Run {self.run_id[:8]} ('{self.command_name}') started")
 
     def mark_success(self) -> None:
         """Mark as successfully completed."""
         self.state = RunState.SUCCESS
         self.success = True
         self._finalize()
-        logger.debug(f"Run {self.run_id} ('{self.command_name}') succeeded in {self.duration_str}")
+        logger.debug(f"Run {self.run_id[:8]} ('{self.command_name}') succeeded in {self.duration_str}")
 
     def mark_failed(self, error: str | Exception) -> None:
         """Mark as failed."""
@@ -120,7 +115,7 @@ class RunResult:
         self.error = error
         self._finalize()
         msg = str(error) if isinstance(error, Exception) else error
-        logger.debug(f"Run {self.run_id} ('{self.command_name}') failed: {msg}")
+        logger.debug(f"Run {self.run_id[:8]} ('{self.command_name}') failed: {msg}")
 
     def mark_cancelled(self, reason: str | None = None) -> None:
         """Mark as cancelled."""
@@ -128,22 +123,18 @@ class RunResult:
         self.success = None
         self.error = reason or "Command was cancelled"
         self._finalize()
-        logger.debug(f"Run {self.run_id} ('{self.command_name}') cancelled")
+        logger.debug(f"Run {self.run_id[:8]} ('{self.command_name}') cancelled")
 
     # ------------------------------------------------------------------ #
     # Finalization
     # ------------------------------------------------------------------ #
     def _finalize(self) -> None:
-        """Record end time, compute duration, and signal the future."""
+        """Record end time and compute duration."""
         self.end_time = datetime.datetime.now()
         if self.start_time:
             self.duration = self.end_time - self.start_time
         else:
             self.duration = datetime.timedelta(0)
-
-        # Callers check result.state/success to determine outcome
-        if not self.future.done():
-            self.future.set_result(self)
 
     # ------------------------------------------------------------------ #
     # Timing properties
@@ -151,10 +142,6 @@ class RunResult:
     @property
     def duration_secs(self) -> float | None:
         return self.duration.total_seconds() if self.duration else None
-
-    @property
-    def duration_ms(self) -> float | None:
-        return self.duration.total_seconds() * 1000 if self.duration else None
 
     @property
     def duration_str(self) -> str:
