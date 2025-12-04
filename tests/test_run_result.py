@@ -123,3 +123,4 @@ def test_to_dict_with_resolved_command():
     assert rc["cwd"] == "/home"
     assert rc["env"] == {"X": "2"}
     assert rc["vars"] == {"v": "val"}
+    assert rc["timeout_secs"] is None
