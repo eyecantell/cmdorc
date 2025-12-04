@@ -19,9 +19,8 @@ It merges the previous `classes.md`, the design decisions in `new.md`, and the c
 10. Runtime / History / Status Behavior
 11. `RunResult` (pure data) rules
 12. `RunHandle` (public façade)
+13. Pitfalls & Best Practices
 13. Expected Methods & Signatures (by class)
-14. Notes on Testing, Serialization, and Extensibility
-
 ---
 
 # 1. Design Goals
@@ -85,7 +84,8 @@ Key public methods expected on the orchestrator:
 | `ExecutionPolicy`     | Stateless decision logic (allow, cancel, ignore) based on `CommandConfig` and active runs.                                  |
 | `CommandExecutor`     | Abstract executor interface. Starts, monitors, and cancels subprocesses or equivalent. Owns subprocess/task lifecycle.      |
 | `CommandRuntime`      | Mutable state store: registered commands, active runs, `latest_result`, bounded history.                                    |
-| `TriggerEngine`       | Event matching (exact + wildcard), callback registration, dispatching, and cycle prevention.                                |
+| `TriggerEngine`       | Event matching (exact + wildcard), callback registration, dispatching, and cycle prevention.   
+| `ResolvedCommand`     | a concrete resolved-snapshot representation of a command prepared for execution (resolved vars, command string, env, cwd, timeout).                             |
 | `RunResult`           | Pure data container for a single run (state, timings, outputs, resolved config snapshot).                                   |
 | `RunHandle`           | Public façade that wraps a `RunResult` and exposes `cancel()` and `wait()` to users.                                        |
 
@@ -166,6 +166,7 @@ There are three explicit phases:
 
 1. Orchestrator looks up `CommandConfig`.
 2. `CommandRuntime` provides list of active runs for this command.
+3. **Debounce Check** Orchestrator checks debounce window.
 3. `ExecutionPolicy.decide(config, active_runs)` → `NewRunDecision`.
 4. If `runs_to_cancel` present → orchestrator instructs executor to cancel them (via `CommandExecutor.cancel_run()`).
 5. If `allow`:
@@ -189,6 +190,25 @@ There are three explicit phases:
 ---
 
 # 7. Trigger Engine & Cycle Prevention
+
+### loop_detection = False
+
+If a command has `loop_detection=False`, then:
+
+* Its generated events do **not** add entries to `TriggerContext.seen`.
+* This allows intentional recursive workflows.
+* Default remains True for safety.
+
+### Trigger Ordering Guarantee
+
+Defined as:
+
+1. Exact match callbacks
+2. Wildcard match callbacks
+3. Exact match command triggers
+4. Wildcard command triggers
+
+This ordering is deterministic and documented.
 
 ### `TriggerContext`
 
@@ -241,7 +261,7 @@ async def handler(run_handle: RunHandle | None, context: Any | None) -> None:
 
 ---
 
-# 9. Executor Architecture (Swappable)
+# 9. Executor Architecture (Swappable) & `ResolvedCommand`
 
 `CommandExecutor` is an abstract base class (ABC). Implementations include `LocalSubprocessExecutor` (default) and test/mock/external executors.
 
@@ -269,6 +289,32 @@ class CommandExecutor(ABC):
 * Extensibility: `SSHExecutor`, `DockerExecutor`, `K8sExecutor`, `InstrumentedExecutor`, `DryRunExecutor`.
 * Composition: wrap executors to add metrics/logging.
 
+# 9. `ResolvedCommand`
+
+```python
+@dataclass(frozen=True)
+class ResolvedCommand:
+    command: str
+    cwd: str | None
+    env: dict[str, str]
+    timeout_secs: int | None
+    vars: dict[str, str]
+```
+
+### Purpose
+
+* Single container holding all *resolved* runtime attributes.
+* Created by orchestrator before calling executor.
+* Executor receives:
+
+  * RunResult (empty result container)
+  * ResolvedCommand (execution instructions)
+
+### Why this is better
+
+* Executor no longer needs to merge vars or manipulate RunResult fields.
+* RunResult becomes cleaner and more obviously a *result*.
+* Executor code becomes simpler, more testable, and easier to mock.
 ---
 
 # 10. Runtime / History / Status Behavior
@@ -289,6 +335,8 @@ class CommandExecutor(ABC):
   * Update `latest_result[name] = result`.
   * If `keep_history > 0`, append to `history[name]` deque (bounded).
 * `get_history(name)` returns up to `keep_history` items.
+
+History ordering is append-in-completion-order.
 
 ### `CommandStatus` (frozen)
 
@@ -334,6 +382,37 @@ Provides:
 * `RunHandle.cancel()` should be safe/ idempotent — orchestrator will route to executor.
 
 ---
+# 13. Pitfalls & Best Practices (New Section)
+
+This new section summarizes architectural risks and guidance:
+
+### 1. Avoiding “God Object” Orchestrator
+
+Encourage internal helpers (RunController, CallbackDispatcher).
+
+### 2. Future-friendly ExecutionPolicy
+
+Document new policy hooks (debounce, future queueing/throttling).
+
+### 3. Trigger Graph Complexity
+
+Explicit ordering + loop_detection option provide safe defaults.
+
+### 4. Cancellation Safety
+
+Orchestrator must wrap executor.cancel_run(result) in try/except.
+
+### 5. History Ordering
+
+Explicitly documented as completion-time order.
+
+### 6. Trigger Validation
+
+Whitespace trimming + pattern checks prevent confusing configs.
+
+### 7. Executor Resolution Separation
+
+ResolvedCommand enforces clean separation and clearer invariants.
 
 # 13. Expected Methods & Signatures (by class)
 

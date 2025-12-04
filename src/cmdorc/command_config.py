@@ -67,6 +67,21 @@ class CommandConfig:
     env: dict[str, str] = field(default_factory=dict)
     """Environment variables to set for the command (merged with os.environ)."""
 
+    debounce_in_ms: int = 0
+    """
+    Optional: Minimum delay between runs of this command.
+    If a run completes at time T, a new run cannot start until T + debounce_in_ms has passed.
+    This is enforced by orchestrator before ExecutionPolicy is applied.
+    0 = disabled (default).
+    """
+
+    loop_detection: bool = True
+    """
+    If True (default), TriggerEngine will prevent recursive cycles using TriggerContext.seen.
+    If False, this command's triggers bypass cycle detection and may produce recursive flows.
+    Use with caution.
+    """
+
     def __post_init__(self) -> None:
         if not self.name:
             logger.warning(f"Invalid config: Command name cannot be empty")

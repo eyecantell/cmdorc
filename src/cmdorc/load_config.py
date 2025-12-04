@@ -60,6 +60,23 @@ def resolve_double_brace_vars(value: str, vars_dict: dict[str, str], *, max_dept
     return value
 
 
+def validate_trigger(name: str) -> str:
+    """
+    Validate a trigger name.
+    Must be non-empty and contain only alphanumerics, underscores, hyphens, or wildcards (*).   
+    """
+
+    if not name:
+        raise ValueError("Trigger name cannot be empty")
+
+    if not re.match(r"^[\w\-\*]+$", name):
+        raise ValueError(
+            f"Invalid trigger name '{name}': must contain only alphanumerics, underscores, hyphens, or wildcards (*)"
+        )
+
+    return name.strip()
+
+
 # =====================================================================
 #   Main loader
 # =====================================================================

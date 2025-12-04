@@ -20,6 +20,17 @@ class RunState(Enum):
     CANCELLED = "cancelled"
 
 
+
+@dataclass(frozen=True)
+class ResolvedCommand:
+    """Snapshot of resolved command settings at execution time."""
+    command: str
+    cwd: str | None
+    env: dict[str, str]
+    timeout_secs: int | None
+    vars: dict[str, str]
+
+
 @dataclass
 class RunResult:
     """
@@ -65,20 +76,8 @@ class RunResult:
     # ------------------------------------------------------------------ #
     # Resolved configuration snapshots (set by CommandExecutor.start_run)
     # ------------------------------------------------------------------ #
-    resolved_vars: dict[str, str] = field(default_factory=dict)
-    """Final template variables used after merging globals + command vars + overrides."""
-
-    resolved_env: dict[str, str] = field(default_factory=dict)
-    """Final environment dict passed to the subprocess (os.environ + config.env)."""
-
-    resolved_cwd: str | None = None
-    """Absolute working directory used for the subprocess."""
-
-    resolved_timeout_secs: int | None = None
-    """Effective timeout value applied to this run (after resolution, if any)."""
-
-    resolved_command: str | None = None
-    """Command after variable resolution."""
+    resolved_command: ResolvedCommand | None = None
+    """Command settings after variable resolution."""
 
     # ------------------------------------------------------------------ #
     # Async completion signalling
