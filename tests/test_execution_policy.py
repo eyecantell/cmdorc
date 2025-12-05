@@ -4,7 +4,8 @@ Tests for ConcurrencyPolicy - the pure decision logic component.
 """
 
 import pytest
-from cmdorc import CommandConfig, RunResult, ConcurrencyPolicy
+
+from cmdorc import CommandConfig, ConcurrencyPolicy, RunResult
 
 
 @pytest.fixture

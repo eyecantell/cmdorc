@@ -9,7 +9,7 @@ from .run_result import RunResult
 @dataclass
 class NewRunDecision:
     """
-    Decision returned by ExecutionPolicy.decide().
+    Decision returned by ConcurrencyPolicy.decide().
 
     - allow=True  → the requested run may start
     - runs_to_cancel → list of active runs that must be cancelled first

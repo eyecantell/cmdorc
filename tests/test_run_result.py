@@ -2,7 +2,8 @@
 
 import asyncio
 import time
-from cmdorc import RunResult, RunState, ResolvedCommand
+
+from cmdorc import ResolvedCommand, RunResult, RunState
 
 
 def test_initial_state():

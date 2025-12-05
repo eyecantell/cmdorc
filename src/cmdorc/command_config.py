@@ -1,8 +1,9 @@
 from __future__ import annotations
+
+import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -72,7 +73,7 @@ class CommandConfig:
     """
     Optional: Minimum delay between runs of this command.
     If a run completes at time T, a new run cannot start until T + debounce_in_ms has passed.
-    This is enforced by orchestrator before ExecutionPolicy is applied.
+    This is enforced by orchestrator before ConcurrencyPolicy is applied.
     0 = disabled (default).
     """
 
@@ -85,7 +86,7 @@ class CommandConfig:
 
     def __post_init__(self) -> None:
         if not self.name:
-            logger.warning(f"Invalid config: Command name cannot be empty")
+            logger.warning("Invalid config: Command name cannot be empty")
             raise ValueError("Command name cannot be empty")
         if not self.command.strip():
             logger.warning(f"Invalid config for '{self.name}': Command cannot be empty")
@@ -106,7 +107,7 @@ class CommandConfig:
                 Path(self.cwd).resolve()
             except OSError as e:
                 logger.warning(f"Invalid config for '{self.name}': Invalid cwd: {e}")
-                raise ValueError(f"Invalid cwd for '{self.name}': {e}")
+                raise ValueError(f"Invalid cwd for '{self.name}': {e}") from None
 
 
 @dataclass(frozen=True)

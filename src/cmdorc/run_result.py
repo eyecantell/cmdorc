@@ -48,7 +48,7 @@ class RunResult:
 
     Pure data container used by CommandRuntime and CommandExecutor.
     Users interact with it via the public RunHandle façade.
-    
+
     Note: This is mutable to allow state transitions during execution,
     but should be treated as immutable once is_finished=True.
     """
@@ -106,7 +106,9 @@ class RunResult:
         self.state = RunState.SUCCESS
         self.success = True
         self._finalize()
-        logger.debug(f"Run {self.run_id[:8]} ('{self.command_name}') succeeded in {self.duration_str}")
+        logger.debug(
+            f"Run {self.run_id[:8]} ('{self.command_name}') succeeded in {self.duration_str}"
+        )
 
     def mark_failed(self, error: str | Exception) -> None:
         """Mark as failed."""

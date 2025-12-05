@@ -21,10 +21,9 @@ from __future__ import annotations
 import datetime
 import logging
 from collections import defaultdict, deque
-from typing import Deque
 
 from .command_config import CommandConfig
-from .run_result import RunResult, RunState
+from .run_result import RunResult
 from .types import CommandStatus
 
 logger = logging.getLogger(__name__)
@@ -33,7 +32,7 @@ logger = logging.getLogger(__name__)
 class CommandRuntime:
     """
     Central mutable state store for command orchestration.
-    
+
     All runtime state (configs, active runs, history, timestamps) lives here.
     This class is intentionally dumb - it stores and retrieves, but doesn't
     make decisions about what to run or cancel.
@@ -52,7 +51,7 @@ class CommandRuntime:
 
         # History: name -> bounded deque of completed RunResults
         # Size controlled by CommandConfig.keep_history
-        self._history: dict[str, Deque[RunResult]] = {}
+        self._history: dict[str, deque[RunResult]] = {}
 
         # Debounce tracking: name -> timestamp of last START (not completion!)
         # This prevents rapid successive starts (e.g., button mashing)
@@ -157,10 +156,10 @@ class CommandRuntime:
             raise KeyError(f"Command '{name}' not registered")
 
         self._active_runs[name].append(result)
-        
+
         # Record start time for debounce (prevent rapid successive starts)
         self._last_start[name] = datetime.datetime.now()
-        
+
         logger.debug(
             f"Added live run {result.run_id[:8]} for '{name}' "
             f"(active_count={len(self._active_runs[name])})"
@@ -177,7 +176,7 @@ class CommandRuntime:
         1. Removes from active runs
         2. Updates latest_result
         3. Appends to history (if keep_history > 0)
-        
+
         Note: Debounce tracking uses START time (recorded in add_live_run),
         not completion time, so we don't update _last_start here.
         """
@@ -195,13 +194,10 @@ class CommandRuntime:
         try:
             active.remove(result)
             logger.debug(
-                f"Removed run {result.run_id[:8]} from active '{name}' "
-                f"(remaining={len(active)})"
+                f"Removed run {result.run_id[:8]} from active '{name}' (remaining={len(active)})"
             )
         except ValueError:
-            logger.warning(
-                f"Run {result.run_id[:8]} for '{name}' was not in active list"
-            )
+            logger.warning(f"Run {result.run_id[:8]} for '{name}' was not in active list")
 
         # Update latest result (always, even if keep_history=0)
         self._latest_result[name] = result
@@ -305,7 +301,7 @@ class CommandRuntime:
     def check_debounce(self, name: str, debounce_ms: int) -> bool:
         """
         Check if enough time has passed since last START.
-        
+
         This prevents rapid successive starts (e.g., button mashing),
         even while a command is still running.
 
