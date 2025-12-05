@@ -126,7 +126,7 @@ handle._result: RunResult  # Direct access to underlying result
 ```
 CommandOrchestrator (public coordinator)
 ├── CommandRuntime (state store)
-├── ExecutionPolicy (decision logic)
+├── ConcurrencyPolicy (decision logic)
 ├── TriggerEngine (event routing)
 └── CommandExecutor (subprocess management)
 ```
@@ -135,11 +135,13 @@ CommandOrchestrator (public coordinator)
 
 | Component | Owns | Does NOT Own |
 |-----------|------|--------------|
-| **CommandOrchestrator** | Public API, coordination, policy application | Subprocess handles, event matching logic |
-| **CommandRuntime** | Registered configs, active runs, history, latest results | Execution decisions, subprocess lifecycle |
-| **ExecutionPolicy** | Concurrent run decisions, trigger matching | Any state, any I/O |
-| **TriggerEngine** | Event matching (wildcards), callback dispatch, cycle prevention | Command execution, state mutations |
+| **CommandOrchestrator** | Public API, coordination, policy application | Subprocess handles, pattern matching |
+| **CommandRuntime** | Registered configs, active runs, history, latest results, debounce timestamps | Execution decisions, subprocess lifecycle |
+| **ConcurrencyPolicy** | Concurrency decisions (max_concurrent, on_retrigger) | Pattern matching, state, any I/O |
+| **TriggerEngine** | ALL trigger pattern matching (exact + wildcards), callback dispatch, cycle prevention | Command execution, state mutations, concurrency decisions |
 | **CommandExecutor** | Subprocess/task lifecycle, output capture | Orchestration policy, trigger logic |
+
+**Note:** TriggerEngine is the single source of truth for all trigger matching. ConcurrencyPolicy focuses purely on concurrency rules.
 
 ---
 
@@ -256,7 +258,7 @@ test_dir = "{{ base_dir }}/tests"  # Resolved to "/home/user/project/tests"
    ↓
 3. Check debounce window (if configured)
    ↓
-4. ExecutionPolicy.decide() → NewRunDecision
+4. ConcurrencyPolicy.decide() → NewRunDecision
    ↓
 5. If runs_to_cancel → executor.cancel_run() for each
    ↓
@@ -282,23 +284,20 @@ test_dir = "{{ base_dir }}/tests"  # Resolved to "/home/user/project/tests"
    ↓
 2. Create fresh TriggerContext(seen=set())
    ↓
-3. TriggerEngine.on_event(event_name, None, context, trigger_context)
+3. TriggerEngine.get_matching_commands(event_name, trigger_type="cancel_on_triggers")
    ↓
-4. Engine finds matching callbacks + commands (exact + wildcards)
+4. For each match → orchestrator.cancel_active_runs(config.name)
    ↓
-5. Execute in order:
-   a. Exact match callbacks
-   b. Wildcard match callbacks
-   c. Exact match command triggers
-   d. Wildcard command triggers
+5. TriggerEngine.get_matching_commands(event_name, trigger_type="triggers")
    ↓
-6. For each matching command:
-   - Check cancel_on_triggers → cancel if needed
+6. For each match:
    - Check should_run_on_trigger → apply policy + execute if allowed
    ↓
-7. Add event_name to trigger_context.seen (if loop_detection=True)
+7. TriggerEngine.on_event() → dispatch callbacks
    ↓
-8. Any triggered commands may fire their own auto-triggers
+8. Add event_name to trigger_context.seen (if loop_detection=True)
+   ↓
+9. Any triggered commands may fire their own auto-triggers
    (cycle prevention via trigger_context.seen)
 ```
 
@@ -339,11 +338,17 @@ def matches(pattern: str, event_name: str) -> bool:
 
 ### TriggerContext & Cycle Prevention
 
+### TriggerContext & Cycle Prevention
+
 ```python
 @dataclass
 class TriggerContext:
     seen: set[str] = field(default_factory=set)
 ```
+
+**Design choice:** Uses `set` for O(1) membership checking rather than `list` (O(n) checking).
+**Rationale:** Sets are significantly faster when checking if an item is contained within them, which is the primary operation for cycle detection.
+**Debugging:** If ordered history is needed for debugging, add separate `history: list[str]` field or rely on logging.
 
 **Rules:**
 1. Fresh context created for each top-level `trigger()` call
@@ -386,8 +391,8 @@ class CommandRuntime:
     # Bounded history (per keep_history setting)
     _history: dict[str, deque[RunResult]]
     
-    # Debounce tracking
-    _last_completion: dict[str, datetime]
+    # Debounce tracking (tracks START times, not completion)
+    _last_start: dict[str, datetime]
 ```
 
 **Key Methods:**
@@ -412,13 +417,16 @@ def record_completion(name: str) -> None
 
 ### Debounce Handling
 
-**Decision:** Debounce is checked in `CommandOrchestrator` **before** calling `ExecutionPolicy.decide()`.
+**Decision:** Debounce is checked in `CommandOrchestrator` **before** calling `ConcurrencyPolicy.decide()`.
 
 **Rationale:**
-- `ExecutionPolicy` is stateless - it cannot track timestamps
+- `ConcurrencyPolicy` is stateless - it cannot track timestamps
 - Debounce is a timing constraint, not a concurrency policy
-- `CommandRuntime` tracks `_last_completion` timestamps
+- `CommandRuntime` tracks completion timestamps via explicit `_last_completion` dict
 - Orchestrator queries runtime before applying policy
+
+**Alternative considered:** Using `latest_result.end_time` instead of separate timestamp tracking.
+**Trade-off:** Current approach is more explicit and flexible (e.g., could debounce differently for success vs failure states in future). If simplicity is preferred, can switch to `latest_result.end_time`.
 
 **Flow:**
 ```python
@@ -701,7 +709,7 @@ async def _dispatch_callback(callback, handle, context):
 ### Unit Test Targets
 
 **Pure Logic (No I/O):**
-- `ExecutionPolicy.decide()` - all concurrency scenarios
+- `ConcurrencyPolicy.decide()` - all concurrency scenarios
 - `resolve_double_brace_vars()` - nested resolution, cycles
 - `TriggerEngine` matching - exact, wildcards, cycle prevention
 - `RunResult` state transitions - all paths
@@ -772,7 +780,7 @@ class MockExecutor(CommandExecutor):
   - [ ] History management (deque with maxlen)
   - [ ] Debounce tracking
   - [ ] Status queries
-- [ ] `ExecutionPolicy` implementation
+- [ ] `ConcurrencyPolicy` implementation
   - [ ] `decide()` with all concurrency cases
   - [ ] `should_run_on_trigger()`
   - [ ] `should_cancel_on_trigger()`
@@ -837,15 +845,6 @@ class MockExecutor(CommandExecutor):
 - **Safety** - Prevents infinite loops in complex trigger graphs
 - **Explicitness** - User can disable per-command via `loop_detection=False`
 - **Debuggability** - Logs when cycles are prevented
-
-### Why Future in RunResult?
-Despite being a data container, `future` serves critical purpose:
-- **Async coordination** - Callers can `await result.future`
-- **Decoupling** - Executor completes future, orchestrator/callers wait
-- **Simplicity** - Alternative (callbacks) would complicate executor interface
-
-**Trade-off accepted:** Slight impurity for significant ergonomic benefit.
-
 ---
 
 **End of Architecture Reference**

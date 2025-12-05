@@ -11,7 +11,7 @@ Responsibilities:
 - Provide status queries
 
 Does NOT:
-- Make execution decisions (that's ExecutionPolicy)
+- Make execution decisions (that's ConcurrencyPolicy)
 - Manage subprocesses (that's CommandExecutor)
 - Fire triggers (that's TriggerEngine via Orchestrator)
 """

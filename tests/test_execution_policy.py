@@ -1,16 +1,16 @@
 # tests/test_execution_policy.py
 """
-Tests for ExecutionPolicy - the pure decision logic component.
+Tests for ConcurrencyPolicy - the pure decision logic component.
 """
 
 import pytest
-from cmdorc import CommandConfig, RunResult, ExecutionPolicy
+from cmdorc import CommandConfig, RunResult, ConcurrencyPolicy
 
 
 @pytest.fixture
 def policy():
-    """Create a fresh ExecutionPolicy instance."""
-    return ExecutionPolicy()
+    """Create a fresh ConcurrencyPolicy instance."""
+    return ConcurrencyPolicy()
 
 
 @pytest.fixture
@@ -268,7 +268,7 @@ class TestEdgeCases:
 
 
 class TestPolicyStateless:
-    """Verify ExecutionPolicy is truly stateless."""
+    """Verify ConcurrencyPolicy is truly stateless."""
 
     def test_multiple_calls_independent(self, policy):
         """Multiple decide() calls should not affect each other."""

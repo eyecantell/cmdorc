@@ -17,7 +17,7 @@ from .types import NewRunDecision
 logger = logging.getLogger(__name__)
 
 
-class ExecutionPolicy:
+class ConcurrencyPolicy:
     """
     Stateless policy engine that decides whether a new command run should start,
     and whether any existing runs should be cancelled first.
@@ -86,55 +86,3 @@ class ExecutionPolicy:
                 f"defaulting to 'ignore'"
             )
             return NewRunDecision(allow=False, runs_to_cancel=[])
-
-    def should_run_on_trigger(
-        self,
-        config: CommandConfig,
-        trigger_event: str,
-    ) -> bool:
-        """
-        Check if a trigger event should cause a command to be run.
-
-        Args:
-            config: The command configuration
-            trigger_event: The event that was triggered
-
-        Returns:
-            True if the trigger matches the command's triggers
-        """
-        should_run = trigger_event in config.triggers
-
-        if should_run:
-            logger.debug(
-                f"Policy for '{config.name}': trigger '{trigger_event}' "
-                f"matches triggers, will run command"
-            )
-
-        return should_run
-
-    def should_cancel_on_trigger(
-        self,
-        config: CommandConfig,
-        trigger_event: str,
-    ) -> bool:
-        """
-        Check if a trigger event should cause cancellation of running instances.
-
-        This is separate from on_retrigger behavior - it handles cancel_on_triggers.
-
-        Args:
-            config: The command configuration
-            trigger_event: The event that was triggered
-
-        Returns:
-            True if all running instances of this command should be cancelled
-        """
-        should_cancel = trigger_event in config.cancel_on_triggers
-
-        if should_cancel:
-            logger.debug(
-                f"Policy for '{config.name}': trigger '{trigger_event}' "
-                f"matches cancel_on_triggers, will cancel active runs"
-            )
-
-        return should_cancel
