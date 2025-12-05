@@ -1,12 +1,12 @@
-# Triggers — Command Orchestration Design (v1)
+# Triggers - Command Orchestration Design (v1)
 
 ## Core Principle
 Every string passed to `runner.trigger(...)` means:  
 **"Run every command whose `triggers` list contains this exact string."**
 
-Triggers not only run commands but also fire registered callbacks—use `on_trigger()` for host reactivity.
+Triggers not only run commands but also fire registered callbacks-use `on_trigger()` for host reactivity.
 
-That's it. No magic. No exceptions. No implicit runs based on command names—everything must be explicitly listed in `triggers` for clarity and safety.
+That's it. No magic. No exceptions. No implicit runs based on command names-everything must be explicitly listed in `triggers` for clarity and safety.
 
 ## Public API
 
@@ -41,17 +41,17 @@ command = "ruff check {{ base_directory }}"
 | `triggers`           | `list[str]`   | Run this command when any of these exact strings are passed to `runner.trigger(...)`      |
 | `cancel_on_triggers` | `list[str]`   | If the command is running and any of these strings are triggered → cancel it immediately |
 
-## Automatic Events (emitted by the runner — no config needed)
+## Automatic Events (emitted by the runner - no config needed)
 
 These events are fired automatically by CommandRunner as commands progress through their lifecycle. All auto-events propagate cycle detection context to prevent infinite loops.
 
 | Event Name                     | When it fires                             | Example Use                                    |
 |--------------------------------|-------------------------------------------|------------------------------------------------|
 | `command_started:<name>`       | After command passes concurrency checks and begins execution | Show UI spinner, track metrics, cancel conflicting tasks |
-| `command_success:<name>`       | After command `<name>` finishes successfully | `triggers = ["command_success:Lint"]` — chain next step |
-| `command_failed:<name>`        | After command `<name>` finishes with failure  | `triggers = ["command_failed:Format"]` — show error notification |
+| `command_success:<name>`       | After command `<name>` finishes successfully | `triggers = ["command_success:Lint"]` - chain next step |
+| `command_failed:<name>`        | After command `<name>` finishes with failure  | `triggers = ["command_failed:Format"]` - show error notification |
 | `command_finished:<name>`      | After command `<name>` finishes (success **or** failure, not cancelled) | Clean up resources regardless of outcome |
-| `command_cancelled:<name>`     | After command `<name>` is cancelled       | `triggers = ["command_cancelled:Tests"]` — update UI |
+| `command_cancelled:<name>`     | After command `<name>` is cancelled       | `triggers = ["command_cancelled:Tests"]` - update UI |
 
 **Important**: 
 - `command_finished` is **only** emitted for success and failure states, not for cancelled commands
@@ -85,13 +85,13 @@ cancel_on_triggers = ["command_started:Tests"]  # cancel this if Tests starts
 
 - `runner.trigger("any_string")` → runs **every** command that lists `"any_string"` in its `triggers` (exact match only).
 - To run a command manually: Add its name to its own `triggers`, then `runner.trigger("CommandName")`.
-- No implicit runs—everything must be explicitly listed for clarity and safety.
+- No implicit runs-everything must be explicitly listed for clarity and safety.
 
 ## Cancellation
 
 - **Explicit**: `runner.cancel_command("Tests")` or `runner.cancel_all()`.
 - **Automatic**: If a command is running and a string in its `cancel_on_triggers` is fired via `trigger(...)`, cancel it.
-- On cancel, emit `command_cancelled:<name>` (but **not** `command_finished:<name>`—cancels are separate from success/failure).
+- On cancel, emit `command_cancelled:<name>` (but **not** `command_finished:<name>`-cancels are separate from success/failure).
 
 ## Lifecycle Flow Example
 

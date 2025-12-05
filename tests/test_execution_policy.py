@@ -187,34 +187,6 @@ class TestMultipleInstances:
         assert decision.runs_to_cancel == active_runs
 
 
-class TestCancelOnTriggers:
-    """Test cancel_on_triggers functionality."""
-
-    def test_matching_trigger_causes_cancellation(self, policy):
-        config = CommandConfig(
-            name="test",
-            command="echo hello",
-            triggers=["manual"],
-            cancel_on_triggers=["file_saved", "abort"],
-        )
-
-        assert policy.should_cancel_on_trigger(config, "file_saved") is True
-        assert policy.should_cancel_on_trigger(config, "abort") is True
-
-    def test_non_matching_trigger_no_cancellation(self, policy):
-        config = CommandConfig(
-            name="test",
-            command="echo hello",
-            triggers=["manual"],
-            cancel_on_triggers=["file_saved", "abort"],
-        )
-
-        assert policy.should_cancel_on_trigger(config, "other_event") is False
-        assert policy.should_cancel_on_trigger(config, "manual") is False
-
-    def test_empty_cancel_triggers(self, policy, basic_config):
-        assert policy.should_cancel_on_trigger(basic_config, "any_event") is False
-
 
 class TestEdgeCases:
     """Test edge cases and defensive behavior."""

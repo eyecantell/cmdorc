@@ -1,6 +1,6 @@
 # tests/test_run_result.py
 
-import asyncio
+import datetime
 import time
 
 from cmdorc import ResolvedCommand, RunResult, RunState
@@ -16,7 +16,6 @@ def test_initial_state():
     assert r.end_time is None
     assert not r.is_finished
     assert r.resolved_command is None
-    assert isinstance(r.future, asyncio.Future)
 
 
 def test_mark_running_sets_start_time_and_state():
@@ -27,7 +26,7 @@ def test_mark_running_sets_start_time_and_state():
     assert not r.is_finished
 
 
-def test_mark_success_transitions_state_and_finishes_future():
+def test_mark_success_transitions_state():
     r = RunResult(command_name="lint")
     r.mark_running()
     r.mark_success()
@@ -35,12 +34,10 @@ def test_mark_success_transitions_state_and_finishes_future():
     assert r.state == RunState.SUCCESS
     assert r.success is True
     assert r.is_finished
-    assert r.future.done()
-    assert r.future.result() is r
     assert r.duration is not None
 
 
-def test_mark_failed_sets_error_and_finishes_future():
+def test_mark_failed_sets_error():
     r = RunResult(command_name="compile")
     r.mark_running()
     r.mark_failed("Syntax error")
@@ -49,29 +46,25 @@ def test_mark_failed_sets_error_and_finishes_future():
     assert r.success is False
     assert r.error == "Syntax error"
     assert r.is_finished
-    assert r.future.done()
 
 
-def test_mark_cancelled_sets_error_and_finishes_future():
+def test_mark_cancelled_sets_error():
     r = RunResult(command_name="deploy")
     r.mark_running()
-    r.mark_cancelled("User interrupt")
+    r.mark_cancelled()
 
     assert r.state == RunState.CANCELLED
     assert r.success is None
-    assert r.error == "User interrupt"
     assert r.is_finished
-    assert r.future.done()
 
 
-def test_duration_ms_and_secs():
+def test_duration_secs():
     r = RunResult(command_name="build")
     r.mark_running()
     time.sleep(0.01)  # ~10ms
     r.mark_success()
 
     assert r.duration_secs > 0
-    assert r.duration_ms > 0
     assert "ms" in r.duration_str or "s" in r.duration_str
 
 
@@ -125,3 +118,65 @@ def test_to_dict_with_resolved_command():
     assert rc["env"] == {"X": "2"}
     assert rc["vars"] == {"v": "val"}
     assert rc["timeout_secs"] is None
+
+def test_mark_with_comment():
+    r = RunResult(command_name="example")
+    r.mark_running(comment="Starting run")
+    assert r.comment == "Starting run"
+    r.mark_success(comment="Run succeeded")
+    assert r.comment == "Run succeeded"
+    r.mark_failed("Error occurred", comment="Run failed")
+    assert r.comment == "Run failed"
+    r.mark_cancelled(comment="Run cancelled")
+    assert r.comment == "Run cancelled"
+
+def test_mark_without_comment():
+    r = RunResult(command_name="example2")
+    r.mark_running()
+    assert r.comment == ""
+    r.mark_success()
+    assert r.comment == ""
+    r.mark_failed("Some error")
+    assert r.comment == ""
+    r.mark_cancelled()
+    assert r.comment == ""
+
+def test_mark_with_none_comment():
+    r = RunResult(command_name="example3")
+    r.mark_running(comment=None)
+    assert r.comment == ""
+    r.mark_success(comment=None)
+    assert r.comment == ""
+    r.mark_failed("Another error", comment=None)
+    assert r.comment == ""
+    r.mark_cancelled(comment=None)
+    assert r.comment == ""
+
+def test_duration_without_start_time():
+    r = RunResult(command_name="no_start")
+    assert r.duration is None
+    assert r.duration_secs is None
+    assert r.duration_str == "-"
+
+    r.mark_cancelled()
+    assert r.duration == datetime.timedelta(0)
+
+
+def test_duration_str_formatting():
+    r = RunResult(command_name="format_test")
+    r.start_time = datetime.datetime.now() - datetime.timedelta(seconds=1.5)
+    r.mark_success()
+    assert "s" in r.duration_str
+    assert float(r.duration_str.replace("s", "")) >= 1.5
+
+    r.start_time = datetime.datetime.now() - datetime.timedelta(minutes=1.5)
+    r.mark_success()
+    assert "s" in r.duration_str
+    assert "m" in r.duration_str
+    assert float(r.duration_str.replace("m", "").replace("s", "").replace(" ", "")) >= 130
+
+    r.start_time = datetime.datetime.now() - datetime.timedelta(hours=1.5)
+    r.mark_success()
+    assert "h" in r.duration_str
+    assert "m" in r.duration_str
+    assert float(r.duration_str.replace("h", "").replace("m", "").replace(" ", "")) >= 130

@@ -93,38 +93,51 @@ class RunResult:
     """Command settings after variable resolution."""
 
     # ------------------------------------------------------------------ #
+    # Comment
+    # ------------------------------------------------------------------ #
+    comment: str = ""
+    """Comment or note about this run (for logging/debugging)."""
+
+    # ------------------------------------------------------------------ #
     # State transitions
     # ------------------------------------------------------------------ #
-    def mark_running(self) -> None:
+    def mark_running(self, comment: str = None) -> None:
         """Transition to RUNNING and record start time."""
         self.state = RunState.RUNNING
         self.start_time = datetime.datetime.now()
+        if comment is not None: 
+            self.comment = comment
         logger.debug(f"Run {self.run_id[:8]} ('{self.command_name}') started")
 
-    def mark_success(self) -> None:
+    def mark_success(self, comment: str = None) -> None:
         """Mark as successfully completed."""
         self.state = RunState.SUCCESS
         self.success = True
         self._finalize()
+        if comment is not None: 
+            self.comment = comment
         logger.debug(
             f"Run {self.run_id[:8]} ('{self.command_name}') succeeded in {self.duration_str}"
         )
 
-    def mark_failed(self, error: str | Exception) -> None:
+    def mark_failed(self, error: str | Exception, comment: str = None) -> None:
         """Mark as failed."""
         self.state = RunState.FAILED
         self.success = False
         self.error = error
         self._finalize()
+        if comment is not None: 
+            self.comment = comment
         msg = str(error) if isinstance(error, Exception) else error
         logger.debug(f"Run {self.run_id[:8]} ('{self.command_name}') failed: {msg}")
 
-    def mark_cancelled(self, reason: str | None = None) -> None:
+    def mark_cancelled(self, comment: str = None) -> None:
         """Mark as cancelled."""
         self.state = RunState.CANCELLED
         self.success = None
-        self.error = reason or "Command was cancelled"
         self._finalize()
+        if comment is not None: 
+            self.comment = comment
         logger.debug(f"Run {self.run_id[:8]} ('{self.command_name}') cancelled")
 
     # ------------------------------------------------------------------ #
@@ -150,7 +163,7 @@ class RunResult:
         """Human-readable duration (e.g. '452ms', '2.4s', '1m 23s', '2h 5m')."""
         secs = self.duration_secs
         if secs is None:
-            return "—"
+            return "-"
         if secs < 1:
             return f"{secs * 1000:.0f}ms"
         if secs < 60:
@@ -186,7 +199,6 @@ class RunResult:
             "state": self.state.value,
             "start_time": self.start_time.isoformat() if self.start_time else None,
             "end_time": self.end_time.isoformat() if self.end_time else None,
-            "duration_ms": self.duration_ms,
             "duration_str": self.duration_str,
             "resolved_command": self.resolved_command.to_dict() if self.resolved_command else None,
         }

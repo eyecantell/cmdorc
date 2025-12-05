@@ -1,4 +1,4 @@
-# cmdorc: Command Orchestrator — Async, Trigger-Driven Shell Command Runner
+# cmdorc: Command Orchestrator - Async, Trigger-Driven Shell Command Runner
 
 [![PyPI version](https://badge.fury.io/py/cmdorc.svg)](https://badge.fury.io/py/cmdorc)  
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)  
@@ -8,20 +8,20 @@
 
 Zero external dependencies (pure stdlib + `tomli` for Python <3.11). Predictable. Extensible. No magic.
 
-Inspired by Make/npm scripts — but instead of file changes, you trigger workflows with **events** like `"lint"`, `"tests_passed"`, or `"deploy_ready"`.
+Inspired by Make/npm scripts - but instead of file changes, you trigger workflows with **events** like `"lint"`, `"tests_passed"`, or `"deploy_ready"`.
 
 ## Features
 
-- **Trigger-Based Execution** — Fire any string event → run configured commands
-- **Auto-Events** — `command_started:Lint`, `command_success:Lint`, `command_failed:Tests`, etc.
-- **Full Async + Concurrency Control** — Non-blocking, cancellable, timeout-aware
-- **Smart Retrigger Policies** — `cancel_and_restart` or `ignore`
-- **Cancellation Triggers** — Auto-cancel commands on certain events
-- **Rich State Tracking** — Live runs, history, durations, output capture
-- **Template Variables** — `{{ base_directory }}`, nested resolution, runtime overrides
-- **TOML Config + Validation** — Clear, declarative setup with validation
-- **Cycle Detection** — Prevents infinite trigger loops with clear warnings
-- **Frontend-Friendly** — Perfect for TUIs (Textual, Bubble Tea), status icons (Pending/Running/Success/Failure/Cancelled), logs
+- **Trigger-Based Execution** - Fire any string event → run configured commands
+- **Auto-Events** - `command_started:Lint`, `command_success:Lint`, `command_failed:Tests`, etc.
+- **Full Async + Concurrency Control** - Non-blocking, cancellable, timeout-aware
+- **Smart Retrigger Policies** - `cancel_and_restart` or `ignore`
+- **Cancellation Triggers** - Auto-cancel commands on certain events
+- **Rich State Tracking** - Live runs, history, durations, output capture
+- **Template Variables** - `{{ base_directory }}`, nested resolution, runtime overrides
+- **TOML Config + Validation** - Clear, declarative setup with validation
+- **Cycle Detection** - Prevents infinite trigger loops with clear warnings
+- **Frontend-Friendly** - Perfect for TUIs (Textual, Bubble Tea), status icons (Pending/Running/Success/Failure/Cancelled), logs
 - **Minimal dependencies**: Only `tomli` for Python <3.11 (stdlib `tomllib` for 3.11+)
 - **Deterministic, Safe Template Resolution** with nested `{{var}}` support and cycle protection
 
@@ -73,7 +73,7 @@ async def main():
     # Trigger a workflow
     await runner.trigger("changes_applied")  # → Lint → (if success) Tests
 
-    # Preferred way — just works, no config gymnastics
+    # Preferred way - just works, no config gymnastics
     result = await runner.run_command("Tests")
     print(f"Tests: {result.state.value} ({result.duration_str})")
 
@@ -107,11 +107,11 @@ asyncio.run(main())
 
 - Any string can be a trigger: `"build"`, `"deploy"`, `"hotkey:f5"`
 - Special auto-triggers (emitted automatically):
-  - `command_started:MyCommand` — Command begins execution
-  - `command_success:MyCommand` — Command exits with code 0
-  - `command_failed:MyCommand` — Command exits non-zero
-  - `command_finished:MyCommand` — Command completes (success or failure, not cancelled)
-  - `command_cancelled:MyCommand` — Command was cancelled
+  - `command_started:MyCommand` - Command begins execution
+  - `command_success:MyCommand` - Command exits with code 0
+  - `command_failed:MyCommand` - Command exits non-zero
+  - `command_finished:MyCommand` - Command completes (success or failure, not cancelled)
+  - `command_cancelled:MyCommand` - Command was cancelled
 
 ### Lifecycle Example
 
