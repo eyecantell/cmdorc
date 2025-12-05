@@ -187,7 +187,6 @@ class TestMultipleInstances:
         assert decision.runs_to_cancel == active_runs
 
 
-
 class TestEdgeCases:
     """Test edge cases and defensive behavior."""
 

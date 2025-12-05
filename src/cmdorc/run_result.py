@@ -105,7 +105,7 @@ class RunResult:
         """Transition to RUNNING and record start time."""
         self.state = RunState.RUNNING
         self.start_time = datetime.datetime.now()
-        if comment is not None: 
+        if comment is not None:
             self.comment = comment
         logger.debug(f"Run {self.run_id[:8]} ('{self.command_name}') started")
 
@@ -114,7 +114,7 @@ class RunResult:
         self.state = RunState.SUCCESS
         self.success = True
         self._finalize()
-        if comment is not None: 
+        if comment is not None:
             self.comment = comment
         logger.debug(
             f"Run {self.run_id[:8]} ('{self.command_name}') succeeded in {self.duration_str}"
@@ -126,7 +126,7 @@ class RunResult:
         self.success = False
         self.error = error
         self._finalize()
-        if comment is not None: 
+        if comment is not None:
             self.comment = comment
         msg = str(error) if isinstance(error, Exception) else error
         logger.debug(f"Run {self.run_id[:8]} ('{self.command_name}') failed: {msg}")
@@ -136,7 +136,7 @@ class RunResult:
         self.state = RunState.CANCELLED
         self.success = None
         self._finalize()
-        if comment is not None: 
+        if comment is not None:
             self.comment = comment
         logger.debug(f"Run {self.run_id[:8]} ('{self.command_name}') cancelled")
 

@@ -399,7 +399,7 @@ class CommandRuntime:
 ```python
 def register_command(config: CommandConfig) -> None
 def remove_command(name: str) -> None
-def get_config(name: str) -> CommandConfig | None
+def get_command(name: str) -> CommandConfig | None
 
 def add_live_run(result: RunResult) -> None
 def mark_run_complete(result: RunResult) -> None
@@ -431,7 +431,7 @@ def record_completion(name: str) -> None
 **Flow:**
 ```python
 async def run_command(self, name: str, vars: dict | None = None) -> RunHandle:
-    config = self._runtime.get_config(name)
+    config = self._runtime.get_command(name)
     
     # Check debounce FIRST (before policy)
     if config.debounce_in_ms > 0:

@@ -119,6 +119,7 @@ def test_to_dict_with_resolved_command():
     assert rc["vars"] == {"v": "val"}
     assert rc["timeout_secs"] is None
 
+
 def test_mark_with_comment():
     r = RunResult(command_name="example")
     r.mark_running(comment="Starting run")
@@ -129,6 +130,7 @@ def test_mark_with_comment():
     assert r.comment == "Run failed"
     r.mark_cancelled(comment="Run cancelled")
     assert r.comment == "Run cancelled"
+
 
 def test_mark_without_comment():
     r = RunResult(command_name="example2")
@@ -141,6 +143,7 @@ def test_mark_without_comment():
     r.mark_cancelled()
     assert r.comment == ""
 
+
 def test_mark_with_none_comment():
     r = RunResult(command_name="example3")
     r.mark_running(comment=None)
@@ -151,6 +154,7 @@ def test_mark_with_none_comment():
     assert r.comment == ""
     r.mark_cancelled(comment=None)
     assert r.comment == ""
+
 
 def test_duration_without_start_time():
     r = RunResult(command_name="no_start")

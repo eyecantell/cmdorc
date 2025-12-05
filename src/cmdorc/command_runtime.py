@@ -124,6 +124,11 @@ class CommandRuntime:
                 # Create new deque with new maxlen
                 old_deque = self._history.get(config.name, deque())
                 new_deque = deque(old_deque, maxlen=config.keep_history)
+
+                # Copy over existing items (up to new maxlen)
+                for item in old_deque:
+                    new_deque.append(item)
+
                 self._history[config.name] = new_deque
                 logger.debug(
                     f"Adjusted history for '{config.name}': "
@@ -132,9 +137,18 @@ class CommandRuntime:
 
         logger.debug(f"Replaced config for '{config.name}'")
 
-    def get_config(self, name: str) -> CommandConfig | None:
+    def get_command(self, name: str) -> CommandConfig | None:
         """Get command configuration by name."""
         return self._configs.get(name)
+
+    def is_registered(self, name: str) -> bool:
+        """Check if a command is registered."""
+        return name in self._configs
+
+    def verify_registered(self, name: str) -> None:
+        """Raise KeyError if command is not registered."""
+        if name not in self._configs:
+            raise KeyError(f"Command '{name}' not registered")
 
     def list_commands(self) -> list[str]:
         """Return list of all registered command names."""
@@ -179,15 +193,13 @@ class CommandRuntime:
 
         Note: Debounce tracking uses START time (recorded in add_live_run),
         not completion time, so we don't update _last_start here.
+
+        Raises:
+            KeyError if command not registered
         """
         name = result.command_name
 
-        if name not in self._configs:
-            logger.warning(
-                f"Marking run complete for unregistered command '{name}' "
-                f"(run_id={result.run_id[:8]})"
-            )
-            return
+        self.verify_registered(name)
 
         # Remove from active runs
         active = self._active_runs.get(name, [])
@@ -219,8 +231,12 @@ class CommandRuntime:
 
         Returns:
             List of RunResult objects in RUNNING or PENDING state.
-            Empty list if no active runs or command not found.
+            Empty list if no active runs.
+
+        Raises:
+            KeyError if command not registered
         """
+        self.verify_registered(name)
         return self._active_runs.get(name, []).copy()
 
     # ================================================================
@@ -235,7 +251,10 @@ class CommandRuntime:
 
         Returns:
             Most recent RunResult, or None if never completed
+        Raises:
+            KeyError if command not registered
         """
+        self.verify_registered(name)
         return self._latest_result.get(name)
 
     def get_history(self, name: str, limit: int = 10) -> list[RunResult]:
@@ -244,12 +263,15 @@ class CommandRuntime:
 
         Args:
             name: Command name
-            limit: Maximum number of results to return (default 10)
+            limit: Maximum number of results to return (default 10). Zero or negative means no limit.
 
         Returns:
             List of completed RunResults, most recent last.
             Empty list if no history or keep_history=0.
+        Raises:
+            KeyError if command not registered
         """
+        self.verify_registered(name)
         history = self._history.get(name)
         if history is None:
             return []
@@ -274,8 +296,7 @@ class CommandRuntime:
         Raises:
             KeyError if command not registered
         """
-        if name not in self._configs:
-            raise KeyError(f"Command '{name}' not found")
+        self.verify_registered(name)
 
         active_count = len(self._active_runs.get(name, []))
         last_run = self._latest_result.get(name)
@@ -312,7 +333,11 @@ class CommandRuntime:
         Returns:
             True if run is allowed (debounce window has passed or never run)
             False if still in debounce window
+
+        Raises:
+            KeyError if command not registered
         """
+        self.verify_registered(name)
         last = self._last_start.get(name)
         if last is None:
             return True  # Never started before, allow
@@ -331,8 +356,6 @@ class CommandRuntime:
 
         return allowed
 
-    # Removed: record_completion() - we track starts, not completions
-
     # ================================================================
     # Debugging & Introspection
     # ================================================================
@@ -343,14 +366,27 @@ class CommandRuntime:
             "total_commands": len(self._configs),
             "total_active_runs": sum(len(runs) for runs in self._active_runs.values()),
             "commands_with_history": len(self._history),
-            "commands_completed": len(self._latest_result),
+            "runs_in_history": sum(len(h) for h in self._history.values()),
+            "commands_with_completed_runs": len(self._latest_result),
         }
 
     def __repr__(self) -> str:
         stats = self.get_stats()
-        return (
+        info = (
             f"CommandRuntime("
             f"commands={stats['total_commands']}, "
             f"active={stats['total_active_runs']}, "
-            f"completed={stats['commands_completed']})"
+            f"runs_in_history={stats['runs_in_history']}, "
+            f"completed={stats['commands_with_completed_runs']})"
         )
+
+        for command in self.list_commands():
+            active_runs = self.get_active_runs(command)
+            latest_result = self.get_latest_result(command)
+            info += f"\n  Command '{command}': active_runs={len(active_runs)}"
+            if latest_result:
+                info += f", latest_result_id={latest_result.run_id[:8]}, state={latest_result.state.value}"
+            else:
+                info += ", latest_result=None"
+            info += f", history_size={len(self._history.get(command, []))}"
+        return info
