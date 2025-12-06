@@ -66,54 +66,50 @@ def resolve_double_brace_vars(value: str, vars_dict: dict[str, str], *, max_dept
 def load_config(path: str | Path | BinaryIO | TextIO, max_nested_depth: int = 10) -> RunnerConfig:
     """
     Load and validate a TOML config file into a RunnerConfig.
-
-    - Parses the entire TOML.
-    - Validates and creates CommandConfig objects for [[command]] sections.
-    - Extracts [variables] as defaults (optional).
-    - Resolves nested {{ }} variables safely (up to max depth).
+    Resolves relative `cwd` paths relative to the config file location.
     """
-
-    # --------------------------------------------------------------
-    # Read TOML
-    # --------------------------------------------------------------
-    if hasattr(path, "read"):
-        data = tomli.load(path)  # type: ignore
-    else:
-        with open(path, "rb") as f:
+    config_path: Path | None = None
+    if not hasattr(path, "read"):
+        config_path = Path(path).resolve()
+        with open(config_path, "rb") as f:
             data = tomli.load(f)
+    else:
+        data = tomli.load(path)  # type: ignore
 
-    # --------------------------------------------------------------
-    # Resolve [variables]
-    # --------------------------------------------------------------
+    # Resolve base directory for relative paths
+    base_dir = config_path.parent if config_path else Path.cwd()
+
+    # ────── Resolve [variables] ──────
     vars_dict: dict[str, str] = data.get("variables", {}).copy()
 
-    # Nested resolution across variables:
-    # For example: b = "{{ a }}" and c = "{{ b }}"
     for _ in range(max_nested_depth):
         changed = False
-
         for key, value in list(vars_dict.items()):
+            if not isinstance(value, str):
+                continue
             new_value = resolve_double_brace_vars(value, vars_dict, max_depth=max_nested_depth)
             if new_value != value:
                 vars_dict[key] = new_value
                 logger.debug(f"Resolved variable '{key}': '{value}' -> '{new_value}'")
                 changed = True
-
         if not changed:
-            logger.debug("Variable resolution stabilized.")
             break
     else:
         raise ValueError("Infinite loop detected while resolving [variables]")
 
-    # --------------------------------------------------------------
-    # Parse commands
-    # --------------------------------------------------------------
+    # ────── Parse and fix commands ──────
     command_data = data.get("command", [])
     if not isinstance(command_data, list):
         raise ValueError("[[command]] must be an array of tables")
 
     commands = []
     for cmd_dict in command_data:
+        # Resolve relative cwd
+        if "cwd" in cmd_dict and cmd_dict["cwd"] is not None:
+            cwd_path = Path(cmd_dict["cwd"])
+            if not cwd_path.is_absolute():
+                cmd_dict["cwd"] = str(base_dir / cwd_path)
+
         try:
             cmd = CommandConfig(**cmd_dict)
             commands.append(cmd)
@@ -123,7 +119,4 @@ def load_config(path: str | Path | BinaryIO | TextIO, max_nested_depth: int = 10
     if not commands:
         raise ValueError("At least one [[command]] is required")
 
-    # --------------------------------------------------------------
-    # Return final config
-    # --------------------------------------------------------------
     return RunnerConfig(commands=commands, vars=vars_dict)
