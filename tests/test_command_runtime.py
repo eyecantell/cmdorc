@@ -10,13 +10,12 @@ Tests all state management operations:
 - Status queries
 """
 
+import logging
 import time
 
 import pytest
 
-from cmdorc import CommandConfig, RunResult, CommandRuntime, RunState
-
-import logging
+from cmdorc import CommandConfig, CommandRuntime, RunResult
 
 logging.getLogger("cmdorc").setLevel(logging.DEBUG)
 
@@ -85,12 +84,14 @@ def test_register_command(runtime, simple_config):
     assert simple_config.name in runtime.list_commands()
     assert runtime.get_command(simple_config.name) == simple_config
 
+
 def test_is_registered(runtime, simple_config):
     """Test is_registered method."""
     assert not runtime.is_registered(simple_config.name)
 
     runtime.register_command(simple_config)
     assert runtime.is_registered(simple_config.name)
+
 
 def test_register_duplicate_raises(runtime, simple_config):
     """Test that registering duplicate command raises ValueError."""
@@ -231,11 +232,13 @@ def test_mark_run_complete_basic(runtime, simple_config):
     # Should be in latest_result
     assert runtime.get_latest_result(simple_config.name) is run
 
+
 def test_mark_run_complete_bad_type_raises(runtime):
     """Test passing a result that is not a RunResult raises TypeError."""
 
     with pytest.raises(TypeError, match="must be a RunResult instance"):
         runtime.mark_run_complete("string-instead-of-runresult")
+
 
 def test_mark_run_complete_updates_latest(runtime, simple_config):
     """Test that mark_run_complete updates latest_result."""
@@ -252,12 +255,13 @@ def test_mark_run_complete_updates_latest(runtime, simple_config):
     latest = runtime.get_latest_result(simple_config.name)
     assert latest is run2
 
+
 def test_mark_run_complete_updates_last_start(runtime, simple_config):
     """Test that mark_run_complete without an add_live_run call updates last_start."""
     runtime.register_command(simple_config)
 
     run = RunResult(command_name=simple_config.name, run_id="run-1")
-    run.mark_running() # set the start_time on the run
+    run.mark_running()  # set the start_time on the run
     runtime.mark_run_complete(run)
 
     last_start = runtime._last_start.get(simple_config.name)

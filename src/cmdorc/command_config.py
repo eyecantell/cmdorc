@@ -3,11 +3,11 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass, field
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
 logger = logging.getLogger(__name__)
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Trigger validation
@@ -31,12 +31,15 @@ def validate_trigger(name: str, *, allow_wildcards: bool = False) -> str:
         pattern = r"^[\w\-]+$"
 
     if not re.match(pattern, name):
-        allowed = "alphanumerics, underscores, and hyphens" if not allow_wildcards else "alphanumerics, underscores, hyphens, and '*' wildcard"
-        raise ValueError(
-            f"Invalid trigger name '{name}': must contain only {allowed}"
+        allowed = (
+            "alphanumerics, underscores, and hyphens"
+            if not allow_wildcards
+            else "alphanumerics, underscores, hyphens, and '*' wildcard"
         )
+        raise ValueError(f"Invalid trigger name '{name}': must contain only {allowed}")
 
     return name.strip()
+
 
 @dataclass(frozen=True)
 class CommandConfig:
@@ -138,12 +141,13 @@ class CommandConfig:
             except OSError as e:
                 logger.warning(f"Invalid config for '{self.name}': Invalid cwd: {e}")
                 raise ValueError(f"Invalid cwd for '{self.name}': {e}") from None
-            
+
         # ────── Validate triggers ──────
         for t in self.triggers:
             validate_trigger(t, allow_wildcards=False)
         for t in self.cancel_on_triggers:
             validate_trigger(t, allow_wildcards=False)
+
 
 @dataclass(frozen=True)
 class RunnerConfig:
