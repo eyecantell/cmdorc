@@ -108,8 +108,7 @@ class CommandRuntime:
         Raises:
             KeyError if command doesn't exist
         """
-        if config.name not in self._configs:
-            raise KeyError(f"Command '{config.name}' not found")
+        self.verify_registered(config.name)
 
         old_config = self._configs[config.name]
         self._configs[config.name] = config
@@ -125,17 +124,13 @@ class CommandRuntime:
                 old_deque = self._history.get(config.name, deque())
                 new_deque = deque(old_deque, maxlen=config.keep_history)
 
-                # Copy over existing items (up to new maxlen)
-                for item in old_deque:
-                    new_deque.append(item)
-
                 self._history[config.name] = new_deque
                 logger.debug(
                     f"Adjusted history for '{config.name}': "
                     f"{old_config.keep_history} -> {config.keep_history}"
                 )
 
-        logger.debug(f"Replaced config for '{config.name}'")
+        logger.debug(f"Finished replace of config for '{config.name}'")
 
     def get_command(self, name: str) -> CommandConfig | None:
         """Get command configuration by name."""
@@ -197,6 +192,10 @@ class CommandRuntime:
         Raises:
             KeyError if command not registered
         """
+
+        if not isinstance(result, RunResult):
+            raise TypeError(f"result parameter must be a RunResult instance. Got: {type(result)}")
+
         name = result.command_name
 
         self.verify_registered(name)
@@ -213,6 +212,20 @@ class CommandRuntime:
 
         # Update latest result (always, even if keep_history=0)
         self._latest_result[name] = result
+
+        # If a last start has not been recorded, set it to the start time of the run or now
+        if name not in self._last_start:
+            if result.start_time is not None:
+                logger.debug(
+                    f"No last_start set for '{name}', setting it to run start_time "
+                    f"({result.start_time.isoformat()})"
+                )
+                self._last_start[name] = result.start_time
+            else:
+                logger.debug(
+                    f"No last_start set for '{name}' and run start time is None, setting last_start to now"
+                )
+                self._last_start[name] = datetime.datetime.now()
 
         # Add to history if tracking is enabled
         config = self._configs[name]
@@ -302,10 +315,10 @@ class CommandRuntime:
         last_run = self._latest_result.get(name)
 
         # Determine state string
-        if last_run is None:
-            state = "never_run"
-        elif active_count > 0:
+        if active_count > 0:
             state = "running"
+        elif last_run is None:
+            state = "never_run"
         else:
             state = last_run.state.value
 
@@ -377,7 +390,7 @@ class CommandRuntime:
             f"commands={stats['total_commands']}, "
             f"active={stats['total_active_runs']}, "
             f"runs_in_history={stats['runs_in_history']}, "
-            f"completed={stats['commands_with_completed_runs']})"
+            f"commands_with_completed_runs={stats['commands_with_completed_runs']})"
         )
 
         for command in self.list_commands():

@@ -14,9 +14,11 @@ import time
 
 import pytest
 
-from cmdorc.command_config import CommandConfig
-from cmdorc.command_runtime import CommandRuntime
-from cmdorc.run_result import RunResult
+from cmdorc import CommandConfig, RunResult, CommandRuntime, RunState
+
+import logging
+
+logging.getLogger("cmdorc").setLevel(logging.DEBUG)
 
 # ================================================================
 # Fixtures
@@ -83,6 +85,12 @@ def test_register_command(runtime, simple_config):
     assert simple_config.name in runtime.list_commands()
     assert runtime.get_command(simple_config.name) == simple_config
 
+def test_is_registered(runtime, simple_config):
+    """Test is_registered method."""
+    assert not runtime.is_registered(simple_config.name)
+
+    runtime.register_command(simple_config)
+    assert runtime.is_registered(simple_config.name)
 
 def test_register_duplicate_raises(runtime, simple_config):
     """Test that registering duplicate command raises ValueError."""
@@ -133,7 +141,7 @@ def test_replace_command(runtime):
 
 def test_replace_nonexistent_raises(runtime, simple_config):
     """Test that replacing non-existent command raises KeyError."""
-    with pytest.raises(KeyError, match="not found"):
+    with pytest.raises(KeyError, match="not registered"):
         runtime.replace_command(simple_config)
 
 
@@ -223,6 +231,11 @@ def test_mark_run_complete_basic(runtime, simple_config):
     # Should be in latest_result
     assert runtime.get_latest_result(simple_config.name) is run
 
+def test_mark_run_complete_bad_type_raises(runtime):
+    """Test passing a result that is not a RunResult raises TypeError."""
+
+    with pytest.raises(TypeError, match="must be a RunResult instance"):
+        runtime.mark_run_complete("string-instead-of-runresult")
 
 def test_mark_run_complete_updates_latest(runtime, simple_config):
     """Test that mark_run_complete updates latest_result."""
@@ -238,6 +251,17 @@ def test_mark_run_complete_updates_latest(runtime, simple_config):
 
     latest = runtime.get_latest_result(simple_config.name)
     assert latest is run2
+
+def test_mark_run_complete_updates_last_start(runtime, simple_config):
+    """Test that mark_run_complete without an add_live_run call updates last_start."""
+    runtime.register_command(simple_config)
+
+    run = RunResult(command_name=simple_config.name, run_id="run-1")
+    run.mark_running() # set the start_time on the run
+    runtime.mark_run_complete(run)
+
+    last_start = runtime._last_start.get(simple_config.name)
+    assert last_start == run.start_time
 
 
 def test_mark_run_complete_adds_to_history(runtime, config_with_history):
@@ -450,7 +474,7 @@ def test_get_status_running_with_history(runtime, simple_config):
 
 def test_get_status_nonexistent_raises(runtime):
     """Test that getting status for non-existent command raises KeyError."""
-    with pytest.raises(KeyError, match="not found"):
+    with pytest.raises(KeyError, match="not registered"):
         runtime.get_status("nonexistent")
 
 
@@ -471,8 +495,10 @@ def test_check_debounce_allowed(runtime, simple_config):
     """Test debounce allows run after sufficient time."""
     runtime.register_command(simple_config)
 
+    run = RunResult(command_name=simple_config.name, run_id="run-1")
+
     # Record completion
-    runtime.record_completion(simple_config.name)
+    runtime.mark_run_complete(run)
 
     # Wait longer than debounce period
     time.sleep(0.01)  # 10ms
@@ -485,8 +511,10 @@ def test_check_debounce_blocked(runtime, simple_config):
     """Test debounce blocks run within window."""
     runtime.register_command(simple_config)
 
+    run = RunResult(command_name=simple_config.name, run_id="run-1")
+
     # Record completion
-    runtime.record_completion(simple_config.name)
+    runtime.mark_run_complete(run)
 
     # Check immediately (should block)
     assert runtime.check_debounce(simple_config.name, 1000) is False
@@ -496,8 +524,10 @@ def test_check_debounce_boundary(runtime, simple_config):
     """Test debounce behavior at exact boundary."""
     runtime.register_command(simple_config)
 
+    run = RunResult(command_name=simple_config.name, run_id="run-1")
+
     # Record completion
-    runtime.record_completion(simple_config.name)
+    runtime.mark_run_complete(run)
 
     # Wait exactly the debounce period
     time.sleep(0.05)  # 50ms
@@ -506,34 +536,12 @@ def test_check_debounce_boundary(runtime, simple_config):
     assert runtime.check_debounce(simple_config.name, 50) is True
 
 
-def test_mark_run_complete_records_timestamp(runtime, simple_config):
-    """Test that mark_run_complete automatically records timestamp."""
-    runtime.register_command(simple_config)
-
-    run = RunResult(command_name=simple_config.name, run_id="run-1")
-    run.mark_success()
-    runtime.mark_run_complete(run)
-
-    # Should now be in debounce window
-    assert runtime.check_debounce(simple_config.name, 1000) is False
-
-
-def test_record_completion_manual(runtime, simple_config):
-    """Test manually recording completion timestamp."""
-    runtime.register_command(simple_config)
-
-    runtime.record_completion(simple_config.name)
-
-    # Should now be in debounce window
-    assert runtime.check_debounce(simple_config.name, 1000) is False
-
-
 # ================================================================
 # Config Replacement with History Tests
 # ================================================================
 
 
-def test_replace_command_history_disabled(runtime):
+def test_replace_command_history_disabled(runtime, simple_config):
     """Test replacing config that disables history."""
     config1 = CommandConfig(
         name=simple_config.name,
@@ -597,7 +605,7 @@ def test_replace_command_history_reduced(runtime):
     assert history == runs[-2:]
 
 
-def test_replace_command_history_increased(runtime):
+def test_replace_command_history_increased(runtime, simple_config):
     """Test replacing config with larger history limit."""
     config1 = CommandConfig(
         name=simple_config.name,
@@ -652,7 +660,7 @@ def test_get_stats_empty(runtime):
     assert stats["total_commands"] == 0
     assert stats["total_active_runs"] == 0
     assert stats["commands_with_history"] == 0
-    assert stats["commands_completed"] == 0
+    assert stats["commands_with_completed_runs"] == 0
 
 
 def test_get_stats_populated(runtime):
@@ -682,7 +690,7 @@ def test_get_stats_populated(runtime):
     assert stats["total_commands"] == 3
     assert stats["total_active_runs"] == 2
     assert stats["commands_with_history"] == 3  # All have keep_history=1
-    assert stats["commands_completed"] == 2
+    assert stats["commands_with_completed_runs"] == 2
 
 
 def test_repr(runtime, simple_config):
@@ -693,4 +701,4 @@ def test_repr(runtime, simple_config):
     assert "CommandRuntime" in repr_str
     assert "commands=1" in repr_str
     assert "active=0" in repr_str
-    assert "completed=0" in repr_str
+    assert "commands_with_completed_runs=0" in repr_str
