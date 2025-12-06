@@ -105,7 +105,7 @@ def test_no_more_changes_debug(caplog):
     """
 
     load_config(BytesIO(toml_str.encode("utf-8")))
-    assert "Variable resolution stabilized" in caplog.text
+    assert "All variables resolved successfully" in caplog.text
 
 
 def test_missing_variable_raises():

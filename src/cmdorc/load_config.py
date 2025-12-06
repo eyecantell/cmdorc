@@ -93,6 +93,7 @@ def load_config(path: str | Path | BinaryIO | TextIO, max_nested_depth: int = 10
                 logger.debug(f"Resolved variable '{key}': '{value}' -> '{new_value}'")
                 changed = True
         if not changed:
+            logger.debug("All variables resolved successfully")
             break
     else:
         raise ValueError("Infinite loop detected while resolving [variables]")
