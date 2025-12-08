@@ -2,7 +2,7 @@
 
 import io
 import logging
-from io import BytesIO
+from pathlib import Path
 
 import pytest
 
@@ -12,163 +12,232 @@ logging.getLogger("cmdorc").setLevel(logging.DEBUG)
 
 
 @pytest.fixture
-def sample_toml():
-    toml_str = """
-    [variables]
-    base_directory = "/project"
-    tests_directory = "{{base_directory}}/tests"   # no spaces allowed
-
-    [[command]]
-    name = "Tests"
-    command = "pytest {{ tests_directory }}"
-    triggers = ["changes_applied", "Tests"]
-    cancel_on_triggers = ["prompt_send"]
-    max_concurrent = 1
-    on_retrigger = "cancel_and_restart"
-    timeout_secs = 300
-    keep_history = 2
-
-    [[command]]
-    name = "Lint"
-    command = "ruff check {{ base_directory }}"
-    triggers = ["changes_applied"]
-    """
-    return BytesIO(toml_str.encode("utf-8"))
-
-
-def test_load_config(sample_toml):
-    sample_toml.seek(0)
-    config = load_config(sample_toml)
-    assert len(config.commands) == 2
-    assert config.vars["tests_directory"] == "/project/tests"
-
-
-def test_load_config_missing_sections():
-    empty = BytesIO(b"")
-    with pytest.raises(ValueError, match="At least one.*required"):
-        load_config(empty)
-
-
-def test_load_config_nested_resolution_loop():
-    loop_toml = BytesIO(
+def minimal_toml():
+    return io.BytesIO(
         b"""
-    [variables]
-    a = "{{b}}"
-    b = "{{c}}"
-    c = "{{a}}"
+[[command]]
+name = "Hello"
+command = "echo hello"
+triggers = ["start"]
+"""
+    )
 
-    [[command]]
-    name = "Test"
-    command = "echo ok"
-    triggers = []
-    """
+
+def test_load_minimal_config(minimal_toml):
+    config = load_config(minimal_toml)
+    assert len(config.commands) == 1
+    cmd = config.commands[0]
+    assert cmd.name == "Hello"
+    assert cmd.command == "echo hello"
+    assert cmd.triggers == ["start"]
+
+
+def test_variables_resolution():
+    toml = io.BytesIO(
+        b"""
+[variables]
+root = "/app"
+src = "{{root}}/src"
+bin = "{{src}}/bin"
+
+[[command]]
+name = "Build"
+command = "make -C {{bin}}"
+triggers = ["build"]
+"""
+    )
+    config = load_config(toml)
+    assert config.vars["root"] == "/app"
+    assert config.vars["src"] == "/app/src"
+    assert config.vars["bin"] == "/app/src/bin"
+    assert config.commands[0].command == "make -C /app/src/bin"
+
+
+def test_relative_cwd_resolution(tmp_path: Path):
+    config_file = tmp_path / "cmdorc.toml"
+    config_file.write_text(
+        """
+[[command]]
+name = "Test"
+command = "pwd"
+cwd = "./sub/dir"
+triggers = []
+
+[[command]]
+name = "TestAbs"
+command = "pwd"
+cwd = "/absolute/path"
+triggers = []
+"""
+    )
+
+    config = load_config(str(config_file))
+    assert len(config.commands) == 2
+
+    rel_cmd = config.commands[0]
+    abs_cmd = config.commands[1]
+
+    expected_rel = str((tmp_path / "sub" / "dir").resolve())
+    assert rel_cmd.cwd == expected_rel
+    assert abs_cmd.cwd == "/absolute/path"
+
+
+def test_invalid_trigger_characters():
+    toml = io.BytesIO(
+        b"""
+[[command]]
+name = "Bad"
+command = "echo ok"
+triggers = ["good", "bad*trigger", "spaces bad"]
+"""
+    )
+    with pytest.raises(ValueError, match="Invalid trigger name.*bad\\*trigger"):
+        load_config(toml)
+
+
+def test_cancel_on_triggers_validation():
+    toml = io.BytesIO(
+        b"""
+[[command]]
+name = "Test"
+command = "sleep 10"
+triggers = ["run"]
+cancel_on_triggers = ["stop", "invalid*"]
+"""
+    )
+    with pytest.raises(ValueError, match="Invalid trigger name.*invalid\\*"):
+        load_config(toml)
+
+
+def test_empty_command_list():
+    with pytest.raises(ValueError, match="At least one.*required"):
+        load_config(io.BytesIO(b""))
+
+
+def test_missing_command_name():
+    toml = io.BytesIO(
+        b"""
+[[command]]
+command = "echo ok"
+triggers = []
+"""
+    )
+    with pytest.raises(ValueError, match="Command name cannot be empty"):
+        load_config(toml)
+
+
+def test_missing_command_field():
+    toml = io.BytesIO(
+        b"""
+[[command]]
+name = "Missing"
+triggers = []
+"""
+    )
+    with pytest.raises(ValueError, match="Command for 'Missing' cannot be empty"):
+        load_config(toml)
+
+
+def test_variable_missing_reference():
+    toml = io.BytesIO(
+        b"""
+[variables]
+a = "{{undefined}}"
+
+[[command]]
+name = "X"
+command = "echo"
+triggers = []
+"""
+    )
+    with pytest.raises(ValueError, match="Missing variable: 'undefined'"):
+        load_config(toml)
+
+
+def test_nested_variable_cycle():
+    toml = io.BytesIO(
+        b"""
+[variables]
+a = "{{b}}"
+b = "{{a}}"
+
+[[command]]
+name = "X"
+command = "echo"
+triggers = []
+"""
     )
     with pytest.raises(ValueError, match="Unresolved nested variables remain"):
-        load_config(loop_toml)
+        load_config(toml)
 
 
-def test_load_config_from_textio():
-    toml_str = """
-    [[command]]
-    name = "Test"
-    command = "echo ok"
-    triggers = []
-    """
-    config = load_config(BytesIO(toml_str.encode("utf-8")))
-    assert len(config.commands) == 1
+def test_deep_nesting_exceeds_max_depth():
+    # 11 levels → exceeds default max_nested_depth=10
+    levels = [f"x{i} = '{{{chr(97 + i + 1)}}}'" for i in range(10)]
+    levels.append("x10 = 'final'")
+    vars_section = "\n".join(levels)
+
+    toml = io.BytesIO(
+        f"""
+[variables]
+{vars_section}
+
+[[command]]
+name = "Deep"
+command = "echo {{x0}}"
+triggers = []
+""".encode()
+    )
+    with pytest.raises(ValueError, match="Unresolved nested variables remain"):
+        load_config(toml, max_nested_depth=10)
 
 
-def test_variable_resolution_changes():
-    toml_str = """
-    [variables]
-    a = "{{b}}"
-    b = "value"
+def test_non_string_variable_skipped():
+    toml = io.BytesIO(
+        b"""
+[variables]
+debug = true
+path = "/app"
 
-    [[command]]
-    name = "Test"
-    command = "echo ok"
-    triggers = []
-    """
-    config = load_config(BytesIO(toml_str.encode("utf-8")))
-    assert config.vars["a"] == "value"
+[[command]]
+name = "Test"
+command = "run"
+triggers = []
+"""
+    )
+    config = load_config(toml)
+    assert config.vars["debug"] is True
+    assert config.vars["path"] == "/app"
 
 
-def test_no_more_changes_debug(caplog):
-    toml_str = """
-    [variables]
-    a = "static"
+def test_debug_log_on_stable_resolution(caplog):
+    caplog.set_level(logging.DEBUG)
+    load_config(
+        io.BytesIO(
+            b"""
+[variables]
+a = "fixed"
 
-    [[command]]
-    name = "Test"
-    command = "echo ok"
-    triggers = []
-    """
-
-    load_config(BytesIO(toml_str.encode("utf-8")))
+[[command]]
+name = "X"
+command = "echo"
+triggers = []
+"""
+        )
+    )
     assert "All variables resolved successfully" in caplog.text
 
 
-def test_missing_variable_raises():
-    toml_str = """
-    [variables]
-    a = "{{b}} and stuff"
-    # b missing
-
-    [[command]]
-    name = "Test"
-    command = "echo ok"
-    triggers = []
-    """
-    with pytest.raises(ValueError, match="Missing variable"):
-        load_config(BytesIO(toml_str.encode("utf-8")))
-
-
-def test_infinite_loop_deeper():
-    toml_str = """
-    [variables]
-    a = "{{b}}"
-    b = "{{c}}"
-    c = "{{d}}"
-    d = "{{a}}"  # Cycle
-
-    [[command]]
-    name = "Test"
-    command = "echo ok"
-    triggers = []
-    """
-    with pytest.raises(ValueError, match="Unresolved nested variables remain"):
-        load_config(BytesIO(toml_str.encode("utf-8")))
-
-
-def test_load_config_from_str_path(tmp_path):
-    toml_path = tmp_path / "config.toml"
-    toml_path.write_text("""
+def test_from_pathlib_path(tmp_path: Path):
+    config_file = tmp_path / "config.toml"
+    config_file.write_text(
+        """
 [[command]]
-name = "Test"
+name = "Path"
 command = "echo ok"
 triggers = []
-    """)
-    config = load_config(str(toml_path))
+"""
+    )
+    config = load_config(config_file)
     assert len(config.commands) == 1
-    assert config.commands[0].name == "Test"
-
-
-def test_deep_nesting_exceeds_max():
-    toml_str = """
-[variables]
-a = "{{b}}"
-b = "{{c}}"
-c = "{{d}}"
-d = "{{e}}"
-e = "{{f}}"
-f = "{{g}}"
-g = "value"
-
-[[command]]
-name = "Test"
-command = "echo ok"
-triggers = []
-    """
-    # Exceeds 5 iterations → infinite loop
-    with pytest.raises(ValueError, match="Unresolved nested variables remain"):
-        load_config(io.BytesIO(toml_str.encode("utf-8")), max_nested_depth=5)
+    assert config.commands[0].name == "Path"
