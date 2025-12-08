@@ -28,6 +28,8 @@ USER developer
 ENV PATH=/home/developer/.local/bin:$PATH
 WORKDIR /mounted/dev/cmdorc
 
+RUN npm install -g @anthropic-ai/claude-code
+
 # Install Python packages
 RUN python -m ensurepip --default-pip && \
     pip install --no-cache-dir --upgrade pip && \
