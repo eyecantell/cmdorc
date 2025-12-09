@@ -152,7 +152,7 @@ CommandOrchestrator (public coordinator)
 class CommandConfig:
     # Required
     name: str
-    command: str  # May contain {{ template_vars }}
+    command: str  # May contain {{ template_vars }} - resolved at runtime, not load time
     triggers: list[str]
     
     # Concurrency control
@@ -194,54 +194,85 @@ class RunnerConfig:
 
 **Responsibilities:**
 1. Parse TOML using `tomllib` / `tomli`
-2. Resolve `[variables]` section with cycle detection
+2. Extract `[variables]` section **as templates** (no resolution at load time)
 3. Resolve relative `cwd` paths **relative to config file location**
 4. Validate all configs via `CommandConfig.__post_init__`
-5. Return immutable `RunnerConfig`
+5. Return immutable `RunnerConfig` with variable templates stored as-is
 
 **Does NOT:**
-- Resolve runtime variables
+- Resolve template variables (happens at runtime in `_prepare_run()`)
+- Validate variable references exist
 - Start any executions
 - Modify global state
+
+**Important:** Variable templates are stored verbatim in `RunnerConfig.vars` and `CommandConfig.vars`. They may contain `{{ }}` references that will only be resolved when commands execute.
 
 ---
 
 ## 5. Variable Resolution
 
-### Three Distinct Phases
+### Two Distinct Phases (Runtime Resolution)
 
-#### Phase 1: Config Load (Static)
-**When:** During `load_config()`  
-**What:** Resolve `[variables]` section  
+Variables are **NOT** resolved at load time. Instead, they're stored as templates and resolved when commands execute. This enables:
+- Environment variable overrides
+- Per-run parameter customization
+- Dynamic values that change between runs
+
+#### Phase 1: Runtime Merge (Per Execution)
+**When:** In `CommandOrchestrator._prepare_run()`
+**What:** Merge variables in priority order:
+1. `RunnerConfig.vars` (global template vars)
+2. `os.environ` (system environment variables)
+3. `CommandConfig.vars` (command-specific overrides)
+4. `run_command(..., vars={...})` (call-time overrides)
+
+**Result:** `merged_vars: dict[str, str]` (fully populated dictionary)
+
 **Example:**
 ```toml
 [variables]
-base_dir = "/home/user/project"
-test_dir = "{{ base_dir }}/tests"  # Resolved to "/home/user/project/tests"
+base_dir = "/home/user/project"  # Global var (stored as template)
+test_dir = "{{ base_dir }}/tests"  # Nested template
+
+[[command]]
+name = "Tests"
+command = "pytest {{ test_dir }}"  # Template string
+triggers = ["tests"]
+[command.vars]
+test_dir = "/alternate/tests"  # Command-specific override
 ```
 
-**Implementation:** `resolve_double_brace_vars()` with cycle detection
+When `run_command("Tests", vars={"test_dir": "/custom/tests"})` is called:
+- Phase 1 merges: global `/home/user/project` → env vars → command `/alternate/tests` → call-time `/custom/tests`
+- Result: `base_dir = "/home/user/project"`, `test_dir = "/custom/tests"`
 
-#### Phase 2: Runtime Merge (Per Execution)
-**When:** In `CommandOrchestrator._prepare_run()`  
-**What:** Merge variables in priority order:
-1. `RunnerConfig.vars` (global)
-2. `CommandConfig.vars` (command-specific)
-3. `run_command(..., vars={...})` (call-time overrides)
-
-**Result:** `merged_vars: dict[str, str]`
-
-#### Phase 3: Template Substitution (Pre-Execution)
-**When:** In `CommandOrchestrator._prepare_run()` (before executor)  
-**What:** Create `ResolvedCommand` by substituting `{{ var }}` in:
+#### Phase 2: Template Substitution (Pre-Execution)
+**When:** In `CommandOrchestrator._prepare_run()` (before executor)
+**What:** Create `ResolvedCommand` by substituting `{{ var }}` and `$VAR_NAME` in:
 - `command` string
 - `env` values
 - Any other templated fields
 
-**Result:** `ResolvedCommand` (fully concrete, no templates)
+**Result:** `ResolvedCommand` (fully concrete, no templates, immutable)
+
+**Example (continued):**
+- Input: `"pytest {{ test_dir }}"`
+- Merged vars: `{"test_dir": "/custom/tests", "base_dir": "/home/user/project"}`
+- Output: `"pytest /custom/tests"`
+
+**Environment Variable Support:**
+- `$VAR_NAME` syntax supported (converted to `{{ VAR_NAME }}` internally)
+- Only uppercase identifiers matched (prevents `$$` shell escaping)
+- Example: `$HOME` → looks up `os.environ["HOME"]`
+
+### Variable Freezing (Per-Run Immutability)
+Once Phase 1 resolves variables for a run, the snapshot is **frozen**:
+- Stored in `ResolvedCommand.vars`
+- Immutable across run lifetime
+- Different runs can see different values if env changes between them
 
 ### Critical Rule
-**Orchestrator resolves variables, Executor receives resolved data.**
+**Orchestrator resolves variables at runtime, Executor receives fully resolved data (no templates).**
 
 ---
 
@@ -711,7 +742,9 @@ async def _dispatch_callback(callback, handle, context):
 
 **Pure Logic (No I/O):**
 - `ConcurrencyPolicy.decide()` - all concurrency scenarios
-- `resolve_double_brace_vars()` - nested resolution, cycles
+- `runtime_vars.resolve_double_brace_vars()` - nested resolution, cycles (moved to runtime_vars.py)
+- `runtime_vars.merge_vars()` - variable priority ordering
+- `runtime_vars.prepare_resolved_command()` - end-to-end resolution
 - `TriggerEngine` matching - exact, wildcards, cycle prevention
 - `RunResult` state transitions - all paths
 - `CommandConfig` validation - all edge cases
@@ -832,10 +865,11 @@ class MockExecutor(CommandExecutor):
 ### ✅ Completed Components (Production Ready)
 
 1. **Configuration System** - `CommandConfig`, `RunnerConfig`, `load_config()`
-2. **State Management** - `CommandRuntime` (full implementation with 48 tests)
-3. **Concurrency Policy** - `ConcurrencyPolicy` (renamed from ConcurrencyPolicy)
-4. **Data Containers** - `RunResult`, `ResolvedCommand`, type definitions
-5. **Executor System** - ABC, `LocalSubprocessExecutor`, `MockExecutor` (48 tests)
+2. **Runtime Variable Resolution** - `runtime_vars.py` with merge/resolve logic (30 tests, 100% coverage)
+3. **State Management** - `CommandRuntime` (full implementation with 48 tests)
+4. **Concurrency Policy** - `ConcurrencyPolicy`
+5. **Data Containers** - `RunResult`, `ResolvedCommand`, type definitions
+6. **Executor System** - ABC, `LocalSubprocessExecutor`, `MockExecutor` (48 tests)
 
 ### 🚧 In Progress
 
@@ -845,10 +879,12 @@ class MockExecutor(CommandExecutor):
 
 ### 📊 Code Statistics
 
-- **Total lines of production code:** ~2,500
-- **Total lines of test code:** ~1,500  
+- **Total lines of production code:** ~2,700
+- **Total lines of test code:** ~2,100
 - **Test coverage:** High (all completed components have comprehensive tests)
-- **Components completed:** 5 of 8 major components
+  - `runtime_vars.py`: 100% coverage (58 statements, 30 tests)
+  - `load_config.py`: 97% coverage
+- **Components completed:** 6 of 8 major components
 
 ---
 
