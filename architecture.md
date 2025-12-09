@@ -441,7 +441,6 @@ def get_status(name: str) -> CommandStatus
 def list_commands() -> list[str]
 
 def check_debounce(name: str, debounce_ms: int) -> bool
-def record_completion(name: str) -> None
 ```
 
 ### Debounce Handling
@@ -451,7 +450,7 @@ def record_completion(name: str) -> None
 **Rationale:**
 - `ConcurrencyPolicy` is stateless - it cannot track timestamps
 - Debounce is a timing constraint, not a concurrency policy
-- `CommandRuntime` tracks completion timestamps via explicit `_last_completion` dict
+- `CommandRuntime` tracks start timestamps via explicit `_last_start` dict
 - Orchestrator queries runtime before applying policy
 
 **Alternative considered:** Using `latest_result.end_time` instead of separate timestamp tracking.
@@ -478,17 +477,16 @@ async def run_command(self, name: str, vars: dict | None = None) -> RunHandle:
 **CommandRuntime responsibilities:**
 ```python
 def check_debounce(self, name: str, debounce_ms: int) -> bool:
-    """Return True if enough time has passed since last completion."""
-    last = self._last_completion.get(name)
+    """Return True if enough time has passed since last start."""
+    last = self._last_start.get(name)
     if last is None:
         return True  # Never run before
-    
+
     elapsed_ms = (datetime.now() - last).total_seconds() * 1000
     return elapsed_ms >= debounce_ms
 
-def record_completion(self, name: str) -> None:
-    """Record completion timestamp for debounce tracking."""
-    self._last_completion[name] = datetime.now()
+# Note: Debounce timestamps are recorded in add_live_run() when the run starts,
+# not at completion. This tracks START times, not completion times.
 ```
 
 ```python
@@ -541,12 +539,21 @@ class CommandExecutor(ABC):
         ...
     
     @abstractmethod
-    async def cancel_run(self, result: RunResult) -> None:
+    async def cancel_run(self, result: RunResult, comment: str | None = None) -> None:
         """
         Cancel a running execution.
-        
+
+        This method should:
+        1. Send termination signal to the process (SIGTERM, then SIGKILL)
+        2. Wait for cleanup
+        3. Call result.mark_cancelled(comment)
+
         Must be idempotent (safe to call multiple times).
-        Should call result.mark_cancelled() when complete.
+        Should be a no-op if the run is already finished.
+
+        Args:
+            result: The RunResult to cancel
+            comment: Optional reason for cancellation (e.g., "timeout", "user request", "retrigger policy")
         """
         ...
     
@@ -629,16 +636,16 @@ class RunResult:
 
 **State Transition Methods:**
 ```python
-def mark_running(comment: str | None = None) -> None:
+def mark_running(comment: str = None) -> None:
     """Set state=RUNNING, record start_time, optional comment."""
 
-def mark_success(comment: str | None = None) -> None:
+def mark_success(comment: str = None) -> None:
     """Set state=SUCCESS, success=True, call _finalize(), optional comment."""
 
-def mark_failed(error: str | Exception, comment: str | None = None) -> None:
+def mark_failed(error: str | Exception, comment: str = None) -> None:
     """Set state=FAILED, success=False, store error, call _finalize(), optional comment."""
 
-def mark_cancelled(comment: str | None = None) -> None:
+def mark_cancelled(comment: str = None) -> None:
     """Set state=CANCELLED, success=None, call _finalize(), optional comment."""
 
 def _finalize() -> None:
@@ -734,6 +741,64 @@ async def _dispatch_callback(callback, handle, context):
 - Should not raise if already cancelled/completed
 - Orchestrator wraps calls in try/except anyway
 
+### Exception Hierarchy
+
+**Status:** ⚠️ **Planned but not yet implemented**
+
+```python
+# exceptions.py (to be created)
+
+class CmdorcError(Exception):
+    """Base exception for all cmdorc errors."""
+    pass
+
+class CommandNotFoundError(CmdorcError):
+    """Raised when attempting to operate on an unregistered command."""
+    pass
+
+class DebounceError(CmdorcError):
+    """Raised when a command is triggered within its debounce window."""
+
+    def __init__(self, command_name: str, debounce_ms: int, elapsed_ms: float):
+        self.command_name = command_name
+        self.debounce_ms = debounce_ms
+        self.elapsed_ms = elapsed_ms
+        super().__init__(
+            f"Command '{command_name}' is in debounce window "
+            f"(elapsed: {elapsed_ms:.1f}ms, required: {debounce_ms}ms)"
+        )
+
+class ConfigValidationError(CmdorcError):
+    """Raised when CommandConfig validation fails."""
+    pass
+
+class ExecutorError(CmdorcError):
+    """Raised when executor encounters an unrecoverable error."""
+    pass
+
+class TriggerCycleError(CmdorcError):
+    """Raised when a trigger cycle is detected (when loop_detection=True)."""
+
+    def __init__(self, event_name: str, cycle_path: list[str]):
+        self.event_name = event_name
+        self.cycle_path = cycle_path
+        super().__init__(
+            f"Trigger cycle detected for '{event_name}': {' -> '.join(cycle_path)}"
+        )
+```
+
+**Usage:**
+- `CommandConfig.__post_init__` should raise `ConfigValidationError` instead of generic `ValueError`
+- `CommandRuntime.verify_registered()` should raise `CommandNotFoundError` instead of generic `KeyError`
+- `CommandOrchestrator` debounce check (line 470) should raise `DebounceError` with context
+- `TriggerEngine` should raise `TriggerCycleError` when cycles detected
+
+**Benefits:**
+- Enables specific exception handling by users
+- Provides better error messages with context
+- Makes error cases more testable
+- Follows Python best practices
+
 ---
 
 ## 12. Testing Strategy
@@ -772,27 +837,30 @@ async def _dispatch_callback(callback, handle, context):
 
 ```python
 class MockExecutor(CommandExecutor):
-    def __init__(self):
+    def __init__(self, delay: float = 0.0, should_fail: bool = False):
         self.started: list[tuple[RunResult, ResolvedCommand]] = []
         self.cancelled: list[tuple[RunResult, str | None]] = []
-        self._delay: float = 0.0
-        self._should_fail: bool = False
-    
+        self.delay: float = delay
+        self.should_fail: bool = should_fail
+        self.failure_message: str = "Simulated failure"
+        self.simulated_output: str = "Simulated output"
+        self.cleaned_up: bool = False
+
     async def start_run(self, result: RunResult, resolved: ResolvedCommand):
         self.started.append((result, resolved))
         result.mark_running()
-        
-        await asyncio.sleep(self._delay)
-        
-        if self._should_fail:
-            result.mark_failed("Simulated failure")
+
+        await asyncio.sleep(self.delay)
+
+        if self.should_fail:
+            result.mark_failed(self.failure_message)
         else:
-            result.output = "Simulated output"
+            result.output = self.simulated_output
             result.mark_success()
-    
+
     async def cancel_run(self, result: RunResult, comment: str | None = None):
         self.cancelled.append((result, comment))
-        result.mark_cancelled(comment or "Simulated cancel")
+        result.mark_cancelled(comment or "Mock cancellation")
 ```
 
 **Fully implemented and tested in `mock_executor.py`.**
@@ -809,26 +877,25 @@ class MockExecutor(CommandExecutor):
 - [x] `ResolvedCommand`
 - [x] `NewRunDecision`, `TriggerContext`, `CommandStatus`
 
-### Phase 2: Runtime & Policy
-- [ ] `CommandRuntime` implementation
-  - [ ] Config registry
-  - [ ] Active run tracking
-  - [ ] History management (deque with maxlen)
-  - [ ] Debounce tracking
-  - [ ] Status queries
-- [ ] `ConcurrencyPolicy` implementation
-  - [ ] `decide()` with all concurrency cases
-  - [ ] `should_run_on_trigger()`
-  - [ ] `should_cancel_on_trigger()`
+### Phase 2: Runtime & Policy ✅
+- [x] `CommandRuntime` implementation
+  - [x] Config registry
+  - [x] Active run tracking
+  - [x] History management (deque with maxlen)
+  - [x] Debounce tracking
+  - [x] Status queries
+- [x] `ConcurrencyPolicy` implementation
+  - [x] `decide()` with all concurrency cases
 
-### Phase 3: Execution Backend
-- [ ] `CommandExecutor` ABC
-- [ ] `LocalSubprocessExecutor`
-  - [ ] Subprocess lifecycle
-  - [ ] Output capture
-  - [ ] Timeout handling
-  - [ ] Cancellation (SIGTERM → SIGKILL)
-  - [ ] Cleanup
+### Phase 3: Execution Backend ✅
+- [x] `CommandExecutor` ABC
+- [x] `LocalSubprocessExecutor`
+  - [x] Subprocess lifecycle
+  - [x] Output capture
+  - [x] Timeout handling
+  - [x] Cancellation (SIGTERM → SIGKILL)
+  - [x] Cleanup
+- [x] `MockExecutor` (test double)
 
 ### Phase 4: Trigger System
 - [ ] `TriggerEngine`
@@ -871,11 +938,11 @@ class MockExecutor(CommandExecutor):
 5. **Data Containers** - `RunResult`, `ResolvedCommand`, type definitions
 6. **Executor System** - ABC, `LocalSubprocessExecutor`, `MockExecutor` (48 tests)
 
-### 🚧 In Progress
+### 🚧 Not Yet Started
 
-1. **TriggerEngine** - Pattern matching, callbacks, cycle prevention
-2. **RunHandle** - Public facade with future management
-3. **CommandOrchestrator** - Main coordinator tying everything together
+1. **TriggerEngine** - Pattern matching, callbacks, cycle prevention (planned)
+2. **RunHandle** - Public facade with future management (planned)
+3. **CommandOrchestrator** - Main coordinator tying everything together (planned)
 
 ### 📊 Code Statistics
 
@@ -909,6 +976,81 @@ class MockExecutor(CommandExecutor):
 - **Safety** - Prevents infinite loops in complex trigger graphs
 - **Explicitness** - User can disable per-command via `loop_detection=False`
 - **Debuggability** - Logs when cycles are prevented
+
+---
+
+## Appendix B: Future Enhancements
+
+**Source:** External architecture review (December 2025)
+**Status:** Recommendations for future implementation
+
+### For CommandOrchestrator Implementation
+
+**1. Convenience Cancellation Method**
+```python
+async def cancel_command(name: str, comment: str | None = None) -> int:
+    """Cancel all active runs of a command. Returns count of cancelled runs."""
+```
+- **Priority:** Should have before 1.0
+- **Rationale:** Common operation, cleaner API
+
+**2. Debugging/Inspection Methods**
+```python
+def get_trigger_graph() -> dict[str, list[str]]
+"""Returns mapping of triggers to commands."""
+
+def get_active_commands() -> list[str]
+"""Returns list of command names with active runs."""
+
+def explain_trigger(event_name: str) -> dict
+"""Explain what would happen if this event were triggered (dry-run)."""
+```
+- **Priority:** Should have for production use
+- **Rationale:** Essential for debugging complex trigger graphs
+
+**3. Graceful Shutdown**
+```python
+async def shutdown(timeout: float = 30.0, cancel_running: bool = True) -> dict
+"""Gracefully shut down orchestrator with optional timeout."""
+```
+- **Priority:** Must have for production
+- **Rationale:** Prevents orphaned subprocesses, clean lifecycle management
+
+### For RunHandle Implementation
+
+**1. Optimized wait() Implementation**
+
+Current planned approach uses polling (`asyncio.sleep(0.01)`). Consider alternatives:
+- Increase poll interval to 0.05s to reduce CPU usage
+- Alternative: Event-based notification where executor calls `handle._notify_completion()`
+
+**Trade-offs:**
+- Polling: Simple, works universally, slight CPU overhead
+- Event-based: More complex, eliminates overhead, requires executor integration
+
+**Recommendation:** Start with polling (0.05s interval), optimize later if needed.
+
+### Optional Enhancements (Post 1.0)
+
+**1. RunResult.metadata Field**
+```python
+metadata: dict[str, Any] = field(default_factory=dict)
+```
+- Extensibility for custom executors (e.g., hostname, resource usage)
+- Not critical for core functionality
+
+**2. TriggerContext.history for Debugging**
+```python
+history: list[str] = field(default_factory=list)  # Ordered event list
+```
+- Helpful for debugging trigger chains
+- Could be opt-in via debug mode to avoid overhead
+
+**3. Enhanced loop_detection Safety**
+- Require explicit `_allow_infinite_loops=True` when `loop_detection=False`
+- Similar to Terraform's confirmation for dangerous operations
+- **Decision:** Keep simple for now, users are expected to understand the config
+
 ---
 
 **End of Architecture Reference**

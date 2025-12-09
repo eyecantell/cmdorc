@@ -1,7 +1,7 @@
 # Development Dockerfile for cmdorc
 # For use with VS Code Remote Development
 
-FROM python:3.10-slim AS base
+FROM python:3.12-slim AS base
 
 # Prevent apt from prompting for input
 ENV DEBIAN_FRONTEND=noninteractive
@@ -21,14 +21,15 @@ RUN useradd -s /bin/bash -m developer && \
     usermod -aG sudo developer && \
     echo "developer ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
 
+# Add claude code globally
+RUN npm install -g @anthropic-ai/claude-code
+
 # Switch to developer user for remaining operations
 USER developer
 
 # Set up Python environment
 ENV PATH=/home/developer/.local/bin:$PATH
 WORKDIR /mounted/dev/cmdorc
-
-RUN npm install -g @anthropic-ai/claude-code
 
 # Install Python packages
 RUN python -m ensurepip --default-pip && \
