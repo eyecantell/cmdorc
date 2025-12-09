@@ -175,7 +175,8 @@ class RunResult:
         return f"{int(hrs)}h {int(mins)}m"
 
     @property
-    def is_finished(self) -> bool:
+    def is_finalized(self) -> bool:
+        '''Run is finished (not pending or running). Could be success, failed, or cancelled.'''
         return self.state not in {RunState.PENDING, RunState.RUNNING}
 
     # ------------------------------------------------------------------ #

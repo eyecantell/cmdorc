@@ -14,7 +14,7 @@ def test_initial_state():
     assert r.output == ""
     assert r.start_time is None
     assert r.end_time is None
-    assert not r.is_finished
+    assert not r.is_finalized
     assert r.resolved_command is None
 
 
@@ -23,7 +23,7 @@ def test_mark_running_sets_start_time_and_state():
     r.mark_running()
     assert r.state == RunState.RUNNING
     assert r.start_time is not None
-    assert not r.is_finished
+    assert not r.is_finalized
 
 
 def test_mark_success_transitions_state():
@@ -33,7 +33,7 @@ def test_mark_success_transitions_state():
 
     assert r.state == RunState.SUCCESS
     assert r.success is True
-    assert r.is_finished
+    assert r.is_finalized
     assert r.duration is not None
 
 
@@ -45,7 +45,7 @@ def test_mark_failed_sets_error():
     assert r.state == RunState.FAILED
     assert r.success is False
     assert r.error == "Syntax error"
-    assert r.is_finished
+    assert r.is_finalized
 
 
 def test_mark_cancelled_sets_error():
@@ -55,7 +55,7 @@ def test_mark_cancelled_sets_error():
 
     assert r.state == RunState.CANCELLED
     assert r.success is None
-    assert r.is_finished
+    assert r.is_finalized
 
 
 def test_duration_secs():

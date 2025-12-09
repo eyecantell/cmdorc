@@ -186,7 +186,7 @@ class LocalSubprocessExecutor(CommandExecutor):
         run_id = result.run_id
 
         # Check if already finished
-        if result.is_finished:
+        if result.is_finalized:
             logger.debug(f"Run {run_id[:8]} already finished, nothing to cancel")
             return
 

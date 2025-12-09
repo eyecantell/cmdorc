@@ -13,6 +13,7 @@ from .exceptions import (
 from .load_config import load_config
 from .local_subprocess_executor import LocalSubprocessExecutor
 from .mock_executor import MockExecutor
+from .run_handle import RunHandle
 from .run_result import ResolvedCommand, RunResult, RunState
 from .types import CommandStatus, NewRunDecision, TriggerContext
 
@@ -26,6 +27,7 @@ __all__ = [
     "NewRunDecision",
     "ResolvedCommand",
     "RunnerConfig",
+    "RunHandle",
     "RunResult",
     "RunState",
     "TriggerContext",

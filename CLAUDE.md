@@ -16,11 +16,11 @@ This project uses **PDM** (Python Dependency Manager):
 - `pdm build` - Build distribution packages
 
 ### Testing
-- `pytest` - Run all tests with coverage report
-- `pytest tests/test_<module>.py` - Run tests for specific module
-- `pytest -k test_function_name` - Run specific test by name
-- `pytest -v` - Verbose output
-- `pytest --cov=cmdorc --cov-report=html` - Generate HTML coverage report (output in `htmlcov/`)
+- `pdm run pytest` - Run all tests with coverage report
+- `pdm run pytest tests/test_<module>.py` - Run tests for specific module
+- `pdm run pytest -k test_function_name` - Run specific test by name
+- `pdm run pytest -v` - Verbose output
+- `pdm run pytest --cov=cmdorc --cov-report=html` - Generate HTML coverage report (output in `htmlcov/`)
 
 ### Code Quality
 - `ruff check .` - Run linter
@@ -30,7 +30,7 @@ This project uses **PDM** (Python Dependency Manager):
 ### Running Examples
 Examples can be found in the README.md. To test command execution:
 ```python
-python -c "import asyncio; from cmdorc import *; asyncio.run(...)"
+pdm run python -c "import asyncio; from cmdorc import *; asyncio.run(...)"
 ```
 
 ## Architecture Overview
@@ -145,7 +145,6 @@ cmdorc emits these events automatically:
 - `command_started:<name>` - After concurrency checks, before subprocess
 - `command_success:<name>` - Exit code 0
 - `command_failed:<name>` - Non-zero exit
-- `command_finished:<name>` - Success OR failure (NOT cancelled)
 - `command_cancelled:<name>` - Command was cancelled
 
 ### Cycle Detection

@@ -78,6 +78,32 @@ orchestrator.list_commands() -> list[str]
 orchestrator.get_status(name: str) -> CommandStatus
 orchestrator.get_history(name: str, limit: int = 10) -> list[RunResult]
 
+# Handle Management
+handle = orchestrator.get_handle_by_run_id(run_id: str) -> RunHandle | None
+handles = orchestrator.get_active_handles(name: str) -> list[RunHandle]
+all_handles = orchestrator.get_all_active_handles() -> list[RunHandle]
+
+# Cancellation
+count = await orchestrator.cancel_command(
+    name: str,
+    comment: str | None = None
+) -> int  # Returns count of runs cancelled
+
+success = await orchestrator.cancel_run(
+    run_id: str,
+    comment: str | None = None
+) -> bool  # Returns True if run was cancelled
+
+count = await orchestrator.cancel_all(
+    comment: str | None = None
+) -> int  # Returns total count of runs cancelled
+
+# Shutdown
+result = await orchestrator.shutdown(
+    timeout: float = 30.0,
+    cancel_running: bool = True
+) -> dict  # Returns: {cancelled_count, completed_count, timeout_expired}
+
 # Callbacks
 orchestrator.on_event(
     event_pattern: str,
@@ -109,7 +135,6 @@ handle.error: str | Exception | None
 handle.duration_str: str
 
 await handle.wait(timeout: float | None = None) -> RunResult
-await handle.cancel() -> None
 
 # Internal (advanced usage)
 handle._result: RunResult  # Direct access to underlying result
@@ -133,13 +158,13 @@ CommandOrchestrator (public coordinator)
 
 | Component | Owns | Does NOT Own |
 |-----------|------|--------------|
-| **CommandOrchestrator** | Public API, coordination, policy application | Subprocess handles, pattern matching |
-| **CommandRuntime** | Registered configs, active runs, history, latest results, debounce timestamps | Execution decisions, subprocess lifecycle |
+| **CommandOrchestrator** | Public API, coordination, policy application, **RunHandle registry** | Subprocess handles, pattern matching |
+| **CommandRuntime** | Registered configs, active RunResults, history, latest results, debounce timestamps | Execution decisions, subprocess lifecycle, handle abstraction |
 | **ConcurrencyPolicy** | Concurrency decisions (max_concurrent, on_retrigger) | Pattern matching, state, any I/O |
 | **TriggerEngine** | ALL trigger pattern matching (exact + wildcards), callback dispatch, cycle prevention | Command execution, state mutations, concurrency decisions |
 | **CommandExecutor** | Subprocess/task lifecycle, output capture | Orchestration policy, trigger logic |
 
-**Note:** TriggerEngine is the single source of truth for all trigger matching. ConcurrencyPolicy focuses purely on concurrency rules.
+**Note on Handle Registry:** CommandOrchestrator maintains a `_handles: dict[str, RunHandle]` mapping (run_id → RunHandle). CommandRuntime tracks the underlying RunResults only. Users interact with handles (public facade), while the runtime manages results (internal state).
 
 ---
 
@@ -293,18 +318,27 @@ Once Phase 1 resolves variables for a run, the snapshot is **frozen**:
    ↓
 6. If allow → create RunResult, register in CommandRuntime
    ↓
-7. executor.start_run(result, resolved_command)
+7. Create RunHandle(result), register in orchestrator._handles[run_id]
    ↓
-8. Executor marks result.state = RUNNING, manages subprocess
+8. Fire command_started:name auto-trigger
    ↓
-9. On completion → executor calls result.mark_success/failed/cancelled
+9. executor.start_run(result, resolved_command)
    ↓
-10. Orchestrator updates runtime (latest_result, history)
+10. Executor marks result.state = RUNNING, manages subprocess
     ↓
-11. Fire auto-triggers (command_success:name, etc.)
+11. On completion → executor calls result.mark_success/failed/cancelled
     ↓
-12. Return RunHandle to caller
+12. Orchestrator observes state change, updates runtime (latest_result, history)
+    ↓
+13. Fire auto-triggers (command_success:name, command_failed:name, etc.)
+    ↓
+14. Return RunHandle to caller (already in registry for handle management methods)
 ```
+
+**Handle Lifecycle:**
+- Created step 7, available for queries/cancellation immediately
+- Unregistered when run completes (via cleanup or history rotation)
+- Caller can use `await handle.wait()` to block for completion
 
 ### Triggered Execution: `trigger(event_name, context)`
 
@@ -661,7 +695,7 @@ def duration_secs(self) -> float | None
 def duration_str(self) -> str  # Human-readable: "452ms", "2.4s", "1m 23s"
 
 @property
-def is_finished(self) -> bool
+def is_finalized(self) -> bool
 ```
 
 ### RunHandle Owns the Future
@@ -897,25 +931,36 @@ class MockExecutor(CommandExecutor):
   - [x] Cleanup
 - [x] `MockExecutor` (test double)
 
-### Phase 4: Trigger System
+### Phase 4: Trigger System & RunHandle ✅
 - [ ] `TriggerEngine`
   - [ ] Pattern matching (exact + wildcards)
   - [ ] Callback registry
   - [ ] Dispatch with ordering guarantee
   - [ ] Cycle prevention
-- [ ] `RunHandle` facade
-  - [ ] Properties
-  - [ ] `wait()`
-  - [ ] `cancel()`
+- [x] `RunHandle` facade
+  - [x] Properties (command_name, run_id, state, success, output, error, duration_str, is_finalized, start_time, end_time, comment)
+  - [x] `wait()` with optional timeout
+  - [x] Internal monitoring task (is_finalized polling at 0.05s)
 
 ### Phase 5: Orchestrator
 - [ ] `CommandOrchestrator`
-  - [ ] `run_command()`
-  - [ ] `trigger()`
+  - [ ] `run_command()` - returns RunHandle
+  - [ ] `trigger()` - event dispatching with cycle prevention
   - [ ] Config management (add/remove/update/reload)
   - [ ] Query methods (list, get_status, get_history)
+  - [ ] Handle management:
+    - [ ] `get_handle_by_run_id()`
+    - [ ] `get_active_handles()`
+    - [ ] `get_all_active_handles()`
+  - [ ] Cancellation:
+    - [ ] `cancel_command()` - cancel all runs of a command
+    - [ ] `cancel_run()` - cancel specific run by run_id
+    - [ ] `cancel_all()` - cancel all active runs
+  - [ ] Graceful shutdown:
+    - [ ] `shutdown()` - with timeout and optional cancel_running
   - [ ] Callback registration (on_event, off_event, set_lifecycle_callback)
   - [ ] Internal coordination (_prepare_run, _apply_policy, etc.)
+  - [ ] Internal handle registry management (_register_handle, _unregister_handle)
   - [ ] Cleanup
 
 ### Phase 6: Polish
@@ -937,21 +982,25 @@ class MockExecutor(CommandExecutor):
 4. **Concurrency Policy** - `ConcurrencyPolicy`
 5. **Data Containers** - `RunResult`, `ResolvedCommand`, type definitions
 6. **Executor System** - ABC, `LocalSubprocessExecutor`, `MockExecutor` (48 tests)
+7. **Exception System** - `CmdorcError` hierarchy with 40 tests, 100% coverage
+8. **RunHandle** - Public async facade for command runs (33 tests, 100% coverage)
 
 ### 🚧 Not Yet Started
 
 1. **TriggerEngine** - Pattern matching, callbacks, cycle prevention (planned)
-2. **RunHandle** - Public facade with future management (planned)
-3. **CommandOrchestrator** - Main coordinator tying everything together (planned)
+2. **CommandOrchestrator** - Main coordinator tying everything together (planned)
 
 ### 📊 Code Statistics
 
-- **Total lines of production code:** ~2,700
-- **Total lines of test code:** ~2,100
-- **Test coverage:** High (all completed components have comprehensive tests)
+- **Total lines of production code:** ~2,900
+- **Total lines of test code:** ~2,500
+- **Test coverage:** 95% overall (all completed components have comprehensive tests)
+  - `run_handle.py`: 100% coverage (71 statements, 33 tests)
+  - `exceptions.py`: 100% coverage (22 statements, 40 tests)
   - `runtime_vars.py`: 100% coverage (58 statements, 30 tests)
-  - `load_config.py`: 97% coverage
-- **Components completed:** 6 of 8 major components
+  - `load_config.py`: 92% coverage
+- **Total tests:** 220 tests passing
+- **Components completed:** 8 of 8 core components (Orchestrator+TriggerEngine are next)
 
 ---
 

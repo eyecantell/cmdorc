@@ -92,7 +92,7 @@ class MockExecutor(CommandExecutor):
 
         except asyncio.CancelledError:
             # Task was cancelled
-            if not result.is_finished:
+            if not result.is_finalized:
                 result.mark_cancelled("Simulated cancellation")
             raise
 
@@ -121,8 +121,8 @@ class MockExecutor(CommandExecutor):
             except asyncio.CancelledError:
                 pass
 
-        # Mark as cancelled if not already finished
-        if not result.is_finished:
+        # Mark as cancelled if not already finalized
+        if not result.is_finalized:
             result.mark_cancelled(comment or "Mock cancellation")
 
     async def cleanup(self) -> None:
