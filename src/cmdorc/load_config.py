@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import re
 from pathlib import Path
 from typing import BinaryIO, TextIO
 
@@ -14,56 +13,11 @@ from .command_config import CommandConfig, RunnerConfig
 
 logger = logging.getLogger(__name__)
 
-# Regex for {{ variable_name }}
-VAR_PATTERN = re.compile(r"\{\{\s*([\w_]+)\s*\}\}")
-
-
-# =====================================================================
-#   Variable Resolution
-# =====================================================================
-def resolve_double_brace_vars(value: str, vars_dict: dict[str, str], *, max_depth: int = 10) -> str:
-    """
-    Resolve {{ var }} occurrences using vars_dict.
-    Only replaces double-braced variables, not single-brace placeholders.
-    Supports nested resolution with a maximum depth to avoid infinite loops.
-
-    Raises:
-        ValueError if a variable is missing, or if nested resolution never stabilizes.
-    """
-
-    for _ in range(max_depth):
-        changed = False
-
-        def repl(match: re.Match) -> str:
-            nonlocal changed
-            var_name = match.group(1)
-
-            if var_name not in vars_dict:
-                raise ValueError(f"Missing variable: '{var_name}'")
-
-            changed = True
-            return vars_dict[var_name]
-
-        new_value = VAR_PATTERN.sub(repl, value)
-
-        if not changed:
-            return new_value  # fully resolved
-
-        value = new_value
-
-    # If still unresolved, we hit a cycle or unresolvable nested structure
-    if VAR_PATTERN.search(value):
-        raise ValueError(
-            f"Unresolved nested variables remain in '{value}' after {max_depth} passes"
-        )
-
-    return value
-
 
 # =====================================================================
 #   Main loader
 # =====================================================================
-def load_config(path: str | Path | BinaryIO | TextIO, max_nested_depth: int = 10) -> RunnerConfig:
+def load_config(path: str | Path | BinaryIO | TextIO) -> RunnerConfig:
     """
     Load and validate a TOML config file into a RunnerConfig.
     Resolves relative `cwd` paths relative to the config file location.
@@ -79,24 +33,10 @@ def load_config(path: str | Path | BinaryIO | TextIO, max_nested_depth: int = 10
     # Resolve base directory for relative paths
     base_dir = config_path.parent if config_path else Path.cwd()
 
-    # ────── Resolve [variables] ──────
+    # ────── Load [variables] as templates ──────
+    # Variables are stored as templates and resolved at runtime (Phase 2/3 in orchestrator)
     vars_dict: dict[str, str] = data.get("variables", {}).copy()
-
-    for _ in range(max_nested_depth):
-        changed = False
-        for key, value in list(vars_dict.items()):
-            if not isinstance(value, str):
-                continue
-            new_value = resolve_double_brace_vars(value, vars_dict, max_depth=max_nested_depth)
-            if new_value != value:
-                vars_dict[key] = new_value
-                logger.debug(f"Resolved variable '{key}': '{value}' -> '{new_value}'")
-                changed = True
-        if not changed:
-            logger.debug("All variables resolved successfully")
-            break
-    else:
-        raise ValueError("Infinite loop detected while resolving [variables]")
+    logger.debug(f"Loaded {len(vars_dict)} variables as templates (resolution deferred to runtime)")
 
     # ────── Parse and fix commands ──────
     command_data = data.get("command", [])

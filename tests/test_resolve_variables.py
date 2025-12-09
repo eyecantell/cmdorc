@@ -1,6 +1,6 @@
 import pytest
 
-from cmdorc.load_config import resolve_double_brace_vars
+from cmdorc.runtime_vars import resolve_double_brace_vars
 
 
 # ---------------------------------------------------------

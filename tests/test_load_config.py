@@ -32,7 +32,8 @@ def test_load_minimal_config(minimal_toml):
     assert cmd.triggers == ["start"]
 
 
-def test_variables_resolution():
+def test_variables_stored_as_templates():
+    """Variables in config are stored as templates, not pre-resolved."""
     toml = io.BytesIO(
         b"""
 [variables]
@@ -47,10 +48,12 @@ triggers = ["build"]
 """
     )
     config = load_config(toml)
+    # Variables are stored as templates (Phase 1 resolution removed)
     assert config.vars["root"] == "/app"
-    assert config.vars["src"] == "/app/src"
-    assert config.vars["bin"] == "/app/src/bin"
-    assert config.commands[0].command == "make -C /app/src/bin"
+    assert config.vars["src"] == "{{root}}/src"  # Template, not resolved
+    assert config.vars["bin"] == "{{src}}/bin"  # Template, not resolved
+    # Command string also contains template
+    assert config.commands[0].command == "make -C {{bin}}"
 
 
 def test_relative_cwd_resolution(tmp_path: Path):
@@ -122,7 +125,7 @@ command = "echo ok"
 triggers = []
 """
     )
-    with pytest.raises(ValueError, match="Command name cannot be empty"):
+    with pytest.raises(ValueError, match="Invalid config in \\[\\[command\\]\\]"):
         load_config(toml)
 
 
@@ -134,62 +137,14 @@ name = "Missing"
 triggers = []
 """
     )
-    with pytest.raises(ValueError, match="Command for 'Missing' cannot be empty"):
+    with pytest.raises(ValueError, match="Invalid config in \\[\\[command\\]\\]"):
         load_config(toml)
 
 
-def test_variable_missing_reference():
-    toml = io.BytesIO(
-        b"""
-[variables]
-a = "{{undefined}}"
-
-[[command]]
-name = "X"
-command = "echo"
-triggers = []
-"""
-    )
-    with pytest.raises(ValueError, match="Missing variable: 'undefined'"):
-        load_config(toml)
 
 
-def test_nested_variable_cycle():
-    toml = io.BytesIO(
-        b"""
-[variables]
-a = "{{b}}"
-b = "{{a}}"
-
-[[command]]
-name = "X"
-command = "echo"
-triggers = []
-"""
-    )
-    with pytest.raises(ValueError, match="Unresolved nested variables remain"):
-        load_config(toml)
 
 
-def test_deep_nesting_exceeds_max_depth():
-    # 11 levels → exceeds default max_nested_depth=10
-    levels = [f"x{i} = '{{{chr(97 + i + 1)}}}'" for i in range(10)]
-    levels.append("x10 = 'final'")
-    vars_section = "\n".join(levels)
-
-    toml = io.BytesIO(
-        f"""
-[variables]
-{vars_section}
-
-[[command]]
-name = "Deep"
-command = "echo {{x0}}"
-triggers = []
-""".encode()
-    )
-    with pytest.raises(ValueError, match="Unresolved nested variables remain"):
-        load_config(toml, max_nested_depth=10)
 
 
 def test_non_string_variable_skipped():
@@ -210,7 +165,7 @@ triggers = []
     assert config.vars["path"] == "/app"
 
 
-def test_debug_log_on_stable_resolution(caplog):
+def test_debug_log_on_variable_load(caplog):
     caplog.set_level(logging.DEBUG)
     load_config(
         io.BytesIO(
@@ -225,7 +180,7 @@ triggers = []
 """
         )
     )
-    assert "All variables resolved successfully" in caplog.text
+    assert "Loaded 1 variables as templates" in caplog.text
 
 
 def test_from_pathlib_path(tmp_path: Path):

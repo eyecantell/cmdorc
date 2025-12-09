@@ -1,4 +1,4 @@
-# tests/test_execution_policy.py
+# tests/test_concurrency_policy.py
 """
 Tests for ConcurrencyPolicy - the pure decision logic component.
 """

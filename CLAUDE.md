@@ -57,17 +57,18 @@ CommandOrchestrator (future - main public API)
 
 ### Core Components (Completed ✅)
 
-1. **Configuration System** (`command_config.py`, `load_config.py`)
+1. **Configuration System** (`command_config.py`, `load_config.py`, `runtime_vars.py`)
    - `CommandConfig` - Frozen dataclass with validation
    - `RunnerConfig` - Container for commands + global variables
-   - `load_config()` - TOML parser with variable resolution and cycle detection
+   - `load_config()` - TOML parser (variable templates stored as-is)
+   - `runtime_vars.py` - Runtime variable resolution with env var support
 
 2. **State Management** (`command_runtime.py`)
    - Manages command registry, active runs, history, and debounce tracking
    - **48 comprehensive tests** covering all scenarios
    - Uses bounded deques for history retention
 
-3. **Concurrency Policy** (`execution_policy.py`)
+3. **Concurrency Policy** (`concurrency_policy.py`)
    - Pure decision logic for `max_concurrent`, `on_retrigger` policies
    - Stateless - takes active runs as input, returns decisions
    - Handles `cancel_and_restart` and `ignore` policies
@@ -90,13 +91,22 @@ CommandOrchestrator (future - main public API)
 
 ## Configuration System
 
-### Variable Resolution (3 Phases)
+### Variable Resolution (2 Phases)
 
-1. **Phase 1: Config Load (Static)** - During `load_config()`, resolve `[variables]` section with cycle detection
-2. **Phase 2: Runtime Merge** - In orchestrator, merge: global vars → command vars → call-time vars
-3. **Phase 3: Template Substitution** - Create `ResolvedCommand` by substituting `{{ var }}` in command strings
+Variables are resolved at execution time, not at config load. This enables environment variable overrides and per-run parameterization.
 
-**Critical Rule:** Orchestrator resolves variables, Executor receives fully resolved data.
+1. **Phase 1: Runtime Merge** - When command executes, merge: global vars → env vars → command vars → call-time vars
+   - Global vars: From `[variables]` section in TOML
+   - Env vars: From `os.environ`
+   - Command vars: From `[command.vars]` section
+   - Call-time vars: From `run_command(vars={...})` or `trigger(..., vars={...})`
+   - Later sources override earlier ones
+
+2. **Phase 2: Template Substitution** - Create `ResolvedCommand` by substituting `{{ var }}` and `$VAR_NAME` in command strings and env values
+
+**Critical Rule:** Variables frozen per-run. Once a run starts, its variable snapshot is immutable. Orchestrator resolves variables, Executor receives fully resolved data.
+
+**Environment Variable Support:** Use `$HOME` syntax for direct env var references (converted to `{{ HOME }}` internally). Uppercase identifiers only.
 
 ### TOML Configuration
 
@@ -211,25 +221,24 @@ assert executor.started[0][1].command == "pytest tests/"
 
 ```
 src/cmdorc/
-├── __init__.py              # Public API exports
-├── command_config.py        # CommandConfig, RunnerConfig, validation
-├── command_runtime.py       # State store (configs, runs, history)
-├── execution_policy.py      # ConcurrencyPolicy (pure decision logic)
-├── load_config.py           # TOML loading + variable resolution
-├── run_result.py            # RunResult, ResolvedCommand, RunState
-└── types.py                 # Type definitions (CommandStatus, etc.)
-
-src/
-├── command_executor.py      # Abstract base class
-├── local_subprocess_executor.py  # Production subprocess executor
-└── mock_executor.py         # Test double
+├── __init__.py                    # Public API exports
+├── command_config.py              # CommandConfig, RunnerConfig, validation
+├── command_executor.py            # CommandExecutor ABC
+├── command_runtime.py             # State store (configs, runs, history)
+├── concurrency_policy.py          # ConcurrencyPolicy (pure decision logic)
+├── load_config.py                 # TOML loading (templates stored as-is)
+├── local_subprocess_executor.py   # Production subprocess executor
+├── mock_executor.py               # Test double for unit testing
+├── run_result.py                  # RunResult, ResolvedCommand, RunState
+├── runtime_vars.py                # Runtime variable resolution + merging
+└── types.py                       # Type definitions (CommandStatus, etc.)
 
 tests/
 ├── test_command_executor.py
-├── test_command_runtime.py  (48 tests)
-├── test_execution_policy.py
-├── test_load_config.py
-├── test_resolve_variables.py
+├── test_command_runtime.py        (48 tests)
+├── test_load_config.py            (11 tests)
+├── test_resolve_variables.py      (15 tests) - resolve_double_brace_vars tests
+├── test_runtime_vars.py           (30 tests) - Runtime variable resolution
 └── test_run_result.py
 ```
 

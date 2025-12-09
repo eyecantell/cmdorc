@@ -1,4 +1,4 @@
-# cmdorc/execution_policy.py
+# cmdorc/concurrency_policy.py
 """
 Pure decision logic for determining whether a new run should be allowed
 and which existing runs (if any) need to be cancelled.
