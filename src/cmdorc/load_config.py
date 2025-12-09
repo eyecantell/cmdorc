@@ -10,6 +10,7 @@ except ImportError:
     import tomli  # <3.11
 
 from .command_config import CommandConfig, RunnerConfig
+from .exceptions import ConfigValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +42,7 @@ def load_config(path: str | Path | BinaryIO | TextIO) -> RunnerConfig:
     # ────── Parse and fix commands ──────
     command_data = data.get("command", [])
     if not isinstance(command_data, list):
-        raise ValueError("[[command]] must be an array of tables")
+        raise ConfigValidationError("[[command]] must be an array of tables")
 
     commands = []
     for cmd_dict in command_data:
@@ -55,9 +56,9 @@ def load_config(path: str | Path | BinaryIO | TextIO) -> RunnerConfig:
             cmd = CommandConfig(**cmd_dict)
             commands.append(cmd)
         except TypeError as e:
-            raise ValueError(f"Invalid config in [[command]]: {e}") from None
+            raise ConfigValidationError(f"Invalid config in [[command]]: {e}") from None
 
     if not commands:
-        raise ValueError("At least one [[command]] is required")
+        raise ConfigValidationError("At least one [[command]] is required")
 
     return RunnerConfig(commands=commands, vars=vars_dict)

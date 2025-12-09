@@ -6,6 +6,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
+from .exceptions import ConfigValidationError
+
 logger = logging.getLogger(__name__)
 
 
@@ -21,7 +23,7 @@ def validate_trigger(name: str, *, allow_wildcards: bool = False) -> str:
         allow_wildcards: If True, allows '*' wildcard character
 
     Raises:
-        ValueError: If trigger is empty or contains invalid characters
+        ConfigValidationError: If trigger is empty or contains invalid characters
 
     Allowed characters:
         - Alphanumerics (a-z, A-Z, 0-9)
@@ -31,7 +33,7 @@ def validate_trigger(name: str, *, allow_wildcards: bool = False) -> str:
         - Asterisks (*) - only if allow_wildcards=True
     """
     if not name:
-        raise ValueError("Trigger name cannot be empty")
+        raise ConfigValidationError("Trigger name cannot be empty")
 
     pattern = r"^[\w\-\:\*]+$"
     if not allow_wildcards:
@@ -43,7 +45,7 @@ def validate_trigger(name: str, *, allow_wildcards: bool = False) -> str:
             if not allow_wildcards
             else "alphanumerics, underscores, hyphens, colons, and '*' wildcard"
         )
-        raise ValueError(f"Invalid trigger name '{name}': must contain only {allowed}")
+        raise ConfigValidationError(f"Invalid trigger name '{name}': must contain only {allowed}")
 
     return name.strip()
 
@@ -127,27 +129,27 @@ class CommandConfig:
     def __post_init__(self) -> None:
         if not self.name:
             logger.warning("Invalid config: Command name cannot be empty")
-            raise ValueError("Command name cannot be empty")
+            raise ConfigValidationError("Command name cannot be empty")
         if not self.command.strip():
             logger.warning(f"Invalid config for '{self.name}': Command cannot be empty")
-            raise ValueError(f"Command for '{self.name}' cannot be empty")
+            raise ConfigValidationError(f"Command for '{self.name}' cannot be empty")
         if self.max_concurrent < 0:
             logger.warning(f"Invalid config for '{self.name}': max_concurrent cannot be negative")
-            raise ValueError("max_concurrent cannot be negative")
+            raise ConfigValidationError("max_concurrent cannot be negative")
         if self.timeout_secs is not None and self.timeout_secs <= 0:
             logger.warning(f"Invalid config for '{self.name}': timeout_secs must be positive")
-            raise ValueError("timeout_secs must be positive")
+            raise ConfigValidationError("timeout_secs must be positive")
         if self.on_retrigger not in ("cancel_and_restart", "ignore"):
             logger.warning(
                 f"Invalid config for '{self.name}': on_retrigger must be 'cancel_and_restart' or 'ignore'"
             )
-            raise ValueError("on_retrigger must be 'cancel_and_restart' or 'ignore'")
+            raise ConfigValidationError("on_retrigger must be 'cancel_and_restart' or 'ignore'")
         if self.cwd is not None:
             try:
                 Path(self.cwd).resolve()
             except OSError as e:
                 logger.warning(f"Invalid config for '{self.name}': Invalid cwd: {e}")
-                raise ValueError(f"Invalid cwd for '{self.name}': {e}") from None
+                raise ConfigValidationError(f"Invalid cwd for '{self.name}': {e}") from None
 
         # ────── Validate triggers ──────
         for t in self.triggers:
@@ -174,4 +176,4 @@ class RunnerConfig:
 
     def __post_init__(self) -> None:
         if not self.commands:
-            raise ValueError("At least one command is required")
+            raise ConfigValidationError("At least one command is required")

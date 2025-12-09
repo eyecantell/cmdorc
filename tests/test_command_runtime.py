@@ -15,7 +15,7 @@ import time
 
 import pytest
 
-from cmdorc import CommandConfig, CommandRuntime, RunResult
+from cmdorc import CommandConfig, CommandRuntime, RunResult, CommandNotFoundError
 
 logging.getLogger("cmdorc").setLevel(logging.DEBUG)
 
@@ -111,8 +111,8 @@ def test_remove_command(runtime, simple_config):
 
 
 def test_remove_nonexistent_raises(runtime):
-    """Test that removing non-existent command raises KeyError."""
-    with pytest.raises(KeyError, match="not found"):
+    """Test that removing non-existent command raises CommandNotFoundError."""
+    with pytest.raises(CommandNotFoundError, match="not found"):
         runtime.remove_command("nonexistent")
 
 
@@ -142,7 +142,7 @@ def test_replace_command(runtime):
 
 def test_replace_nonexistent_raises(runtime, simple_config):
     """Test that replacing non-existent command raises KeyError."""
-    with pytest.raises(KeyError, match="not registered"):
+    with pytest.raises(CommandNotFoundError, match="not registered"):
         runtime.replace_command(simple_config)
 
 
@@ -179,7 +179,7 @@ def test_add_live_run(runtime, simple_config, sample_run):
 
 def test_add_live_run_unregistered_raises(runtime, sample_run):
     """Test that adding run for unregistered command raises KeyError."""
-    with pytest.raises(KeyError, match="not registered"):
+    with pytest.raises(CommandNotFoundError, match="not registered"):
         runtime.add_live_run(sample_run)
 
 
@@ -207,7 +207,7 @@ def test_get_active_runs_empty(runtime, simple_config):
 
 def test_get_active_runs_nonexistent_command(runtime):
     """Test getting active runs for non-existent command returns empty list."""
-    with pytest.raises(KeyError, match="not registered"):
+    with pytest.raises(CommandNotFoundError, match="not registered"):
         runtime.get_active_runs("nonexistent")
 
 
@@ -337,7 +337,7 @@ def test_mark_run_complete_unregistered_command(runtime):
     run = RunResult(command_name="nonexistent", run_id="run-1")
     run.mark_success()
 
-    with pytest.raises(KeyError, match="not registered"):
+    with pytest.raises(CommandNotFoundError, match="not registered"):
         runtime.mark_run_complete(run)
 
 
@@ -389,7 +389,7 @@ def test_get_history_limit_larger_than_available(runtime, config_with_history):
 
 def test_get_history_nonexistent_command(runtime):
     """Test getting history for non-existent command returns empty list."""
-    with pytest.raises(KeyError, match="not registered"):
+    with pytest.raises(CommandNotFoundError, match="not registered"):
         runtime.get_history("nonexistent")
 
 
@@ -478,7 +478,7 @@ def test_get_status_running_with_history(runtime, simple_config):
 
 def test_get_status_nonexistent_raises(runtime):
     """Test that getting status for non-existent command raises KeyError."""
-    with pytest.raises(KeyError, match="not registered"):
+    with pytest.raises(CommandNotFoundError, match="not registered"):
         runtime.get_status("nonexistent")
 
 

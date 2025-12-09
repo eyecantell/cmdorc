@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from cmdorc import load_config
+from cmdorc import load_config, ConfigValidationError
 
 logging.getLogger("cmdorc").setLevel(logging.DEBUG)
 
@@ -94,7 +94,7 @@ command = "echo ok"
 triggers = ["good", "bad*trigger", "spaces bad"]
 """
     )
-    with pytest.raises(ValueError, match="Invalid trigger name.*bad\\*trigger"):
+    with pytest.raises(ConfigValidationError, match="Invalid trigger name.*bad\\*trigger"):
         load_config(toml)
 
 
@@ -108,12 +108,12 @@ triggers = ["run"]
 cancel_on_triggers = ["stop", "invalid*"]
 """
     )
-    with pytest.raises(ValueError, match="Invalid trigger name.*invalid\\*"):
+    with pytest.raises(ConfigValidationError, match="Invalid trigger name.*invalid\\*"):
         load_config(toml)
 
 
 def test_empty_command_list():
-    with pytest.raises(ValueError, match="At least one.*required"):
+    with pytest.raises(ConfigValidationError, match="At least one.*required"):
         load_config(io.BytesIO(b""))
 
 
@@ -125,7 +125,7 @@ command = "echo ok"
 triggers = []
 """
     )
-    with pytest.raises(ValueError, match="Invalid config in \\[\\[command\\]\\]"):
+    with pytest.raises(ConfigValidationError, match="Invalid config in \\[\\[command\\]\\]"):
         load_config(toml)
 
 
@@ -137,7 +137,7 @@ name = "Missing"
 triggers = []
 """
     )
-    with pytest.raises(ValueError, match="Invalid config in \\[\\[command\\]\\]"):
+    with pytest.raises(ConfigValidationError, match="Invalid config in \\[\\[command\\]\\]"):
         load_config(toml)
 
 

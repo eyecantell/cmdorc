@@ -23,6 +23,7 @@ import logging
 from collections import defaultdict, deque
 
 from .command_config import CommandConfig
+from .exceptions import CommandNotFoundError
 from .run_result import RunResult
 from .types import CommandStatus
 
@@ -84,10 +85,10 @@ class CommandRuntime:
         Remove a command and all its state.
 
         Raises:
-            KeyError if command doesn't exist
+            CommandNotFoundError if command doesn't exist
         """
         if name not in self._configs:
-            raise KeyError(f"Command '{name}' not found")
+            raise CommandNotFoundError(f"Command '{name}' not found")
 
         # Clean up all state
         del self._configs[name]
@@ -141,9 +142,9 @@ class CommandRuntime:
         return name in self._configs
 
     def verify_registered(self, name: str) -> None:
-        """Raise KeyError if command is not registered."""
+        """Raise CommandNotFoundError if command is not registered."""
         if name not in self._configs:
-            raise KeyError(f"Command '{name}' not registered")
+            raise CommandNotFoundError(f"Command '{name}' not registered")
 
     def list_commands(self) -> list[str]:
         """Return list of all registered command names."""
@@ -162,7 +163,7 @@ class CommandRuntime:
         """
         name = result.command_name
         if name not in self._configs:
-            raise KeyError(f"Command '{name}' not registered")
+            raise CommandNotFoundError(f"Command '{name}' not registered")
 
         self._active_runs[name].append(result)
 
