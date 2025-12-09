@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from cmdorc import load_config, ConfigValidationError
+from cmdorc import ConfigValidationError, load_config
 
 logging.getLogger("cmdorc").setLevel(logging.DEBUG)
 

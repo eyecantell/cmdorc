@@ -215,9 +215,7 @@ class TestWaitFunctionality:
 class TestEdgeCases:
     """Tests for edge cases and race conditions."""
 
-    async def test_handle_for_already_finalized_run(
-        self, sample_result: RunResult
-    ):
+    async def test_handle_for_already_finalized_run(self, sample_result: RunResult):
         """Creating handle for already-finalized run should work correctly."""
         sample_result.mark_success()
         handle = RunHandle(sample_result)
@@ -244,9 +242,7 @@ class TestEdgeCases:
         assert result2 is result
         assert result2.state == RunState.SUCCESS
 
-    async def test_watcher_cleanup_on_task_cancellation(
-        self, sample_result: RunResult
-    ):
+    async def test_watcher_cleanup_on_task_cancellation(self, sample_result: RunResult):
         """Watcher task should handle cancellation gracefully."""
         handle = RunHandle(sample_result)
 
@@ -413,9 +409,7 @@ class TestTimeoutEdgeCases:
         with pytest.raises(asyncio.TimeoutError):
             await handle.wait(timeout=-1.0)
 
-    async def test_wait_with_zero_timeout_on_finished(
-        self, sample_result: RunResult
-    ):
+    async def test_wait_with_zero_timeout_on_finished(self, sample_result: RunResult):
         """wait(timeout=0) on finished run should return immediately."""
         sample_result.mark_success()
         handle = RunHandle(sample_result)

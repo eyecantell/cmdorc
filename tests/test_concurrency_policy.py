@@ -206,11 +206,10 @@ class TestEdgeCases:
         config.__dict__["on_retrigger"] = "invalid_value"
 
         active_run = RunResult(command_name="test")
-        decision = policy.decide(config, [active_run])
 
-        # Should default to "ignore" behavior
-        assert decision.allow is False
-        assert decision.runs_to_cancel == []
+        # Invalid on_retrigger value should raise ValueError
+        with pytest.raises(ValueError, match="Invalid on_retrigger value"):
+            policy.decide(config, [active_run])
 
     def test_empty_active_runs_list(self, policy, basic_config):
         """Should handle empty active runs gracefully."""

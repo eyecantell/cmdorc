@@ -15,7 +15,7 @@ import time
 
 import pytest
 
-from cmdorc import CommandConfig, CommandRuntime, RunResult, CommandNotFoundError
+from cmdorc import CommandConfig, CommandNotFoundError, CommandRuntime, RunResult
 
 logging.getLogger("cmdorc").setLevel(logging.DEBUG)
 

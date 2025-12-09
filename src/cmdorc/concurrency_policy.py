@@ -3,12 +3,16 @@
 Pure decision logic for determining whether a new run should be allowed
 and which existing runs (if any) need to be cancelled.
 
-The policy enforces max_concurrent limits and on_retrigger behavior.
+Pure decision logic for concurrency, retrigger policies, and debounce.
+
+This module contains stateless functions to decide whether to start new command runs,
+which existing runs to cancel, and whether debounce prevents a start.
 """
 
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 
 from .command_config import CommandConfig
 from .run_result import RunResult
@@ -27,27 +31,46 @@ class ConcurrencyPolicy:
     - on_retrigger behavior ("cancel_and_restart" or "ignore")
     """
 
+    @staticmethod
     def decide(
-        self,
         config: CommandConfig,
         active_runs: list[RunResult],
+        last_start_time: datetime | None = None,
     ) -> NewRunDecision:
         """
-        Decide whether a new run should be allowed and which (if any) runs to cancel.
+        Decide if a new run should start, considering debounce, max_concurrent, and on_retrigger.
+
+        This is a pure function: deterministic based on inputs, no side effects.
+
+        Debounce is checked first (from last start time, regardless of outcome).
+        If debounced, immediately deny without considering concurrency.
+
+        Then, evaluate concurrency:
+        - If under max_concurrent (or unlimited), allow.
+        - If at/above limit:
+          - "ignore": deny new run.
+          - "cancel_and_restart": allow, but cancel all active runs.
 
         Args:
-            config: The command configuration
-            active_runs: Currently running instances of this command
+            config: The command configuration with policy settings.
+            active_runs: List of currently RUNNING RunResults (filtered by caller).
+            last_start_time: Timestamp of the last run start, or None if never run.
 
         Returns:
-            NewRunDecision with:
-            - allow: True if new run should start
-            - runs_to_cancel: List of active runs to cancel first
+            NewRunDecision indicating if allowed and which runs to cancel.
+
+        Raises:
+            ValueError: If on_retrigger is invalid.
         """
+        # Check debounce first: prevent rapid starts regardless of concurrency
+        if config.debounce_in_ms > 0 and last_start_time is not None:
+            elapsed_ms = (datetime.now() - last_start_time).total_seconds() * 1000
+            if elapsed_ms < config.debounce_in_ms:
+                return NewRunDecision(allow=False, runs_to_cancel=[])
 
         active_count = len(active_runs)
 
-        # Case 1: Unlimited concurrency (max_concurrent = 0)
+        # Case 1: Unlimited concurrency: always allow
         if config.max_concurrent == 0:
             logger.debug(
                 f"Policy for '{config.name}': unlimited concurrency, "
@@ -71,18 +94,13 @@ class ConcurrencyPolicy:
             )
             return NewRunDecision(allow=True, runs_to_cancel=active_runs.copy())
 
-        elif config.on_retrigger == "ignore":
+        if config.on_retrigger == "ignore":
             logger.debug(
                 f"Policy for '{config.name}': at limit ({active_count}/{config.max_concurrent}), "
                 f"ignoring new trigger"
             )
             return NewRunDecision(allow=False, runs_to_cancel=[])
-
+        elif config.on_retrigger == "cancel_and_restart":
+            return NewRunDecision(allow=True, runs_to_cancel=active_runs)
         else:
-            # This should never happen due to CommandConfig validation,
-            # but handle it defensively
-            logger.error(
-                f"Policy for '{config.name}': unknown on_retrigger value '{config.on_retrigger}', "
-                f"defaulting to 'ignore'"
-            )
-            return NewRunDecision(allow=False, runs_to_cancel=[])
+            raise ValueError(f"Invalid on_retrigger value: {config.on_retrigger}")

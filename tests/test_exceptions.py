@@ -343,9 +343,7 @@ class TestExceptionUsagePatterns:
             if not command:
                 raise ConfigValidationError(f"Command for '{name}' cannot be empty")
             if timeout < 0:
-                raise ConfigValidationError(
-                    f"Command '{name}' timeout cannot be negative"
-                )
+                raise ConfigValidationError(f"Command '{name}' timeout cannot be negative")
 
         validate_command_config("test", "pytest", 30)
 

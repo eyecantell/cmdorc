@@ -15,6 +15,7 @@ from .local_subprocess_executor import LocalSubprocessExecutor
 from .mock_executor import MockExecutor
 from .run_handle import RunHandle
 from .run_result import ResolvedCommand, RunResult, RunState
+from .trigger_engine import TriggerEngine
 from .types import CommandStatus, NewRunDecision, TriggerContext
 
 __all__ = [
@@ -31,6 +32,7 @@ __all__ = [
     "RunResult",
     "RunState",
     "TriggerContext",
+    "TriggerEngine",
     # Executors
     "CommandExecutor",
     "LocalSubprocessExecutor",

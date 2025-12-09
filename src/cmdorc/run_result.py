@@ -176,7 +176,7 @@ class RunResult:
 
     @property
     def is_finalized(self) -> bool:
-        '''Run is finished (not pending or running). Could be success, failed, or cancelled.'''
+        """Run is finished (not pending or running). Could be success, failed, or cancelled."""
         return self.state not in {RunState.PENDING, RunState.RUNNING}
 
     # ------------------------------------------------------------------ #
