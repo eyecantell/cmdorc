@@ -22,19 +22,26 @@ def validate_trigger(name: str, *, allow_wildcards: bool = False) -> str:
 
     Raises:
         ValueError: If trigger is empty or contains invalid characters
+
+    Allowed characters:
+        - Alphanumerics (a-z, A-Z, 0-9)
+        - Underscores (_)
+        - Hyphens (-)
+        - Colons (:) - for lifecycle events like "command_success:Name"
+        - Asterisks (*) - only if allow_wildcards=True
     """
     if not name:
         raise ValueError("Trigger name cannot be empty")
 
-    pattern = r"^[\w\-\*]+$"
+    pattern = r"^[\w\-\:\*]+$"
     if not allow_wildcards:
-        pattern = r"^[\w\-]+$"
+        pattern = r"^[\w\-\:]+$"
 
     if not re.match(pattern, name):
         allowed = (
-            "alphanumerics, underscores, and hyphens"
+            "alphanumerics, underscores, hyphens, and colons"
             if not allow_wildcards
-            else "alphanumerics, underscores, hyphens, and '*' wildcard"
+            else "alphanumerics, underscores, hyphens, colons, and '*' wildcard"
         )
         raise ValueError(f"Invalid trigger name '{name}': must contain only {allowed}")
 

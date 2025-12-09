@@ -141,12 +141,6 @@ triggers = []
         load_config(toml)
 
 
-
-
-
-
-
-
 def test_non_string_variable_skipped():
     toml = io.BytesIO(
         b"""

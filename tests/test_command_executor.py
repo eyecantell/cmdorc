@@ -6,18 +6,19 @@ Tests both MockExecutor and LocalSubprocessExecutor.
 """
 
 import asyncio
-import pytest
 import sys
+
+import pytest
 
 from cmdorc.command_executor import CommandExecutor
 from cmdorc.local_subprocess_executor import LocalSubprocessExecutor
 from cmdorc.mock_executor import MockExecutor
-from cmdorc.run_result import RunResult, RunState, ResolvedCommand
-
+from cmdorc.run_result import ResolvedCommand, RunResult, RunState
 
 # ================================================================
 # Fixtures
 # ================================================================
+
 
 @pytest.fixture
 def mock_executor():
@@ -53,14 +54,15 @@ def simple_resolved():
 # MockExecutor Tests
 # ================================================================
 
+
 @pytest.mark.asyncio
 async def test_mock_executor_success(mock_executor, sample_result, simple_resolved):
     """Test MockExecutor simulates successful execution."""
     await mock_executor.start_run(sample_result, simple_resolved)
-    
+
     # Wait for completion
     await asyncio.sleep(0.05)
-    
+
     assert sample_result.state == RunState.SUCCESS
     assert sample_result.success is True
     assert sample_result.output == "Simulated output"
@@ -71,10 +73,10 @@ async def test_mock_executor_success(mock_executor, sample_result, simple_resolv
 async def test_mock_executor_failure(sample_result, simple_resolved):
     """Test MockExecutor simulates failure."""
     executor = MockExecutor(should_fail=True, failure_message="Test error")
-    
+
     await executor.start_run(sample_result, simple_resolved)
     await asyncio.sleep(0.05)
-    
+
     assert sample_result.state == RunState.FAILED
     assert sample_result.success is False
     assert sample_result.error == "Test error"
@@ -84,13 +86,13 @@ async def test_mock_executor_failure(sample_result, simple_resolved):
 async def test_mock_executor_delay(sample_result, simple_resolved):
     """Test MockExecutor respects delay."""
     executor = MockExecutor(delay=0.1)
-    
+
     await executor.start_run(sample_result, simple_resolved)
-    
+
     # Should still be running
     await asyncio.sleep(0.05)
     assert sample_result.state == RunState.RUNNING
-    
+
     # Should complete after full delay
     await asyncio.sleep(0.1)
     assert sample_result.state == RunState.SUCCESS
@@ -100,15 +102,15 @@ async def test_mock_executor_delay(sample_result, simple_resolved):
 async def test_mock_executor_cancellation(mock_executor, sample_result, simple_resolved):
     """Test MockExecutor cancellation."""
     mock_executor.delay = 0.2
-    
+
     await mock_executor.start_run(sample_result, simple_resolved)
     await asyncio.sleep(0.05)  # Let it start
-    
+
     assert sample_result.state == RunState.RUNNING
-    
+
     # Cancel it
     await mock_executor.cancel_run(sample_result, comment="Test cancel")
-    
+
     assert sample_result.state == RunState.CANCELLED
     assert len(mock_executor.cancelled) == 1
     assert mock_executor.cancelled[0][1] == "Test cancel"
@@ -119,12 +121,12 @@ async def test_mock_executor_cleanup(mock_executor, simple_resolved):
     """Test MockExecutor cleanup."""
     # Start multiple runs
     results = [RunResult(command_name="test", run_id=f"run-{i}") for i in range(3)]
-    
+
     for result in results:
         await mock_executor.start_run(result, simple_resolved)
-    
+
     await mock_executor.cleanup()
-    
+
     assert mock_executor.cleaned_up is True
 
 
@@ -133,12 +135,12 @@ async def test_mock_executor_reset(mock_executor, sample_result, simple_resolved
     """Test MockExecutor reset clears history."""
     await mock_executor.start_run(sample_result, simple_resolved)
     await mock_executor.cancel_run(sample_result)
-    
+
     assert len(mock_executor.started) == 1
     assert len(mock_executor.cancelled) == 1
-    
+
     mock_executor.reset()
-    
+
     assert len(mock_executor.started) == 0
     assert len(mock_executor.cancelled) == 0
 
@@ -146,6 +148,7 @@ async def test_mock_executor_reset(mock_executor, sample_result, simple_resolved
 # ================================================================
 # LocalSubprocessExecutor Tests
 # ================================================================
+
 
 @pytest.mark.asyncio
 async def test_local_executor_success(local_executor):
@@ -158,12 +161,12 @@ async def test_local_executor_success(local_executor):
         timeout_secs=None,
         vars={},
     )
-    
+
     await local_executor.start_run(result, resolved)
-    
+
     # Wait for completion
     await asyncio.sleep(0.5)
-    
+
     assert result.state == RunState.SUCCESS
     assert result.success is True
     assert "Hello World" in result.output
@@ -183,10 +186,10 @@ async def test_local_executor_failure(local_executor):
         timeout_secs=None,
         vars={},
     )
-    
+
     await local_executor.start_run(result, resolved)
     await asyncio.sleep(0.5)
-    
+
     assert result.state == RunState.FAILED
     assert result.success is False
     assert "exited with code 42" in str(result.error)
@@ -203,10 +206,10 @@ async def test_local_executor_output_capture(local_executor):
         timeout_secs=None,
         vars={},
     )
-    
+
     await local_executor.start_run(result, resolved)
     await asyncio.sleep(0.5)
-    
+
     assert result.state == RunState.SUCCESS
     assert "Line 1" in result.output
     assert "Line 2" in result.output
@@ -224,10 +227,10 @@ async def test_local_executor_timeout(local_executor):
         timeout_secs=0.2,  # Short timeout
         vars={},
     )
-    
+
     await local_executor.start_run(result, resolved)
     await asyncio.sleep(0.5)
-    
+
     assert result.state == RunState.FAILED
     assert result.success is False
     assert "timed out" in str(result.error).lower()
@@ -244,15 +247,15 @@ async def test_local_executor_cancellation(local_executor):
         timeout_secs=None,
         vars={},
     )
-    
+
     await local_executor.start_run(result, resolved)
     await asyncio.sleep(0.1)  # Let it start
-    
+
     assert result.state == RunState.RUNNING
-    
+
     # Cancel it
     await local_executor.cancel_run(result, comment="User stopped")
-    
+
     assert result.state == RunState.CANCELLED
     assert result.success is None
 
@@ -268,15 +271,15 @@ async def test_local_executor_cancel_finished_is_noop(local_executor):
         timeout_secs=None,
         vars={},
     )
-    
+
     await local_executor.start_run(result, resolved)
     await asyncio.sleep(0.5)  # Wait for completion
-    
+
     assert result.state == RunState.SUCCESS
-    
+
     # Try to cancel (should be no-op)
     await local_executor.cancel_run(result)
-    
+
     # State should remain SUCCESS
     assert result.state == RunState.SUCCESS
 
@@ -285,13 +288,13 @@ async def test_local_executor_cancel_finished_is_noop(local_executor):
 async def test_local_executor_environment_variables(local_executor):
     """Test LocalSubprocessExecutor passes environment variables."""
     result = RunResult(command_name="env_test")
-    
+
     # Command that prints an environment variable
     if sys.platform == "win32":
         command = "echo %TEST_VAR%"
     else:
         command = "echo $TEST_VAR"
-    
+
     resolved = ResolvedCommand(
         command=command,
         cwd=None,
@@ -299,10 +302,10 @@ async def test_local_executor_environment_variables(local_executor):
         timeout_secs=None,
         vars={},
     )
-    
+
     await local_executor.start_run(result, resolved)
     await asyncio.sleep(0.5)
-    
+
     assert result.state == RunState.SUCCESS
     assert "test_value_123" in result.output
 
@@ -311,7 +314,7 @@ async def test_local_executor_environment_variables(local_executor):
 async def test_local_executor_concurrent_runs(local_executor):
     """Test LocalSubprocessExecutor handles concurrent runs."""
     results = []
-    
+
     for i in range(3):
         result = RunResult(command_name=f"concurrent_{i}")
         resolved = ResolvedCommand(
@@ -321,13 +324,13 @@ async def test_local_executor_concurrent_runs(local_executor):
             timeout_secs=None,
             vars={},
         )
-        
+
         await local_executor.start_run(result, resolved)
         results.append(result)
-    
+
     # Wait for all to complete
     await asyncio.sleep(1.0)
-    
+
     # All should succeed
     for i, result in enumerate(results):
         assert result.state == RunState.SUCCESS
@@ -338,7 +341,7 @@ async def test_local_executor_concurrent_runs(local_executor):
 async def test_local_executor_cleanup(local_executor):
     """Test LocalSubprocessExecutor cleanup cancels active runs."""
     results = []
-    
+
     # Start multiple long-running commands
     for i in range(3):
         result = RunResult(command_name=f"cleanup_test_{i}")
@@ -349,19 +352,19 @@ async def test_local_executor_cleanup(local_executor):
             timeout_secs=None,
             vars={},
         )
-        
+
         await local_executor.start_run(result, resolved)
         results.append(result)
-    
+
     await asyncio.sleep(0.2)  # Let them start
-    
+
     # All should be running
     for result in results:
         assert result.state == RunState.RUNNING
-    
+
     # Cleanup
     await local_executor.cleanup()
-    
+
     # Verify cleanup
     assert len(local_executor._processes) == 0
     assert len(local_executor._tasks) == 0
@@ -380,6 +383,7 @@ async def test_local_executor_supports_features(local_executor):
 # Abstract Interface Tests
 # ================================================================
 
+
 def test_executor_is_abstract():
     """Test that CommandExecutor cannot be instantiated."""
     with pytest.raises(TypeError):
@@ -389,27 +393,27 @@ def test_executor_is_abstract():
 @pytest.mark.asyncio
 async def test_executor_default_cleanup():
     """Test that default cleanup implementation does nothing."""
-    
+
     class MinimalExecutor(CommandExecutor):
         async def start_run(self, result, resolved):
             pass
-        
+
         async def cancel_run(self, result, comment=None):
             pass
-    
+
     executor = MinimalExecutor()
     await executor.cleanup()  # Should not raise
 
 
 def test_executor_default_supports_feature():
     """Test that default supports_feature returns False."""
-    
+
     class MinimalExecutor(CommandExecutor):
         async def start_run(self, result, resolved):
             pass
-        
+
         async def cancel_run(self, result, comment=None):
             pass
-    
+
     executor = MinimalExecutor()
     assert executor.supports_feature("anything") is False

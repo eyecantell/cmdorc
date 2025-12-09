@@ -1,8 +1,5 @@
 """Tests for runtime variable resolution module."""
 
-import os
-from dataclasses import dataclass
-
 import pytest
 
 from cmdorc.command_config import CommandConfig
@@ -11,7 +8,6 @@ from cmdorc.runtime_vars import (
     prepare_resolved_command,
     resolve_runtime_vars,
 )
-
 
 # =====================================================================
 #   Test merge_vars
@@ -224,9 +220,7 @@ def test_prepare_resolved_command_merge_priority():
     global_vars = {"mode": "global-mode", "env": "global-env", "log": "debug"}
     call_time_vars = {"mode": "runtime-mode"}
 
-    resolved = prepare_resolved_command(
-        config, global_vars, call_time_vars=call_time_vars
-    )
+    resolved = prepare_resolved_command(config, global_vars, call_time_vars=call_time_vars)
 
     # call-time wins for 'mode'
     assert resolved.command == "mode=runtime-mode env=command-env"
@@ -349,7 +343,7 @@ def test_prepare_resolved_command_vars_frozen():
 
     # Modifying returned vars shouldn't affect anything
     # (it's a copy due to .copy() in prepare_resolved_command)
-    original_vars = resolved.vars.copy()
+    resolved.vars.copy()
     # Note: ResolvedCommand is frozen, so we can't test mutation directly
 
 
@@ -393,14 +387,10 @@ def test_prepare_resolved_command_complex_scenario(monkeypatch):
     global_vars = {"target": "eu-west", "log_level": "info"}
     call_time_vars = {"mode": "production", "debug": "true"}
 
-    resolved = prepare_resolved_command(
-        config, global_vars, call_time_vars=call_time_vars
-    )
+    resolved = prepare_resolved_command(config, global_vars, call_time_vars=call_time_vars)
 
     # Verify command resolution
-    assert resolved.command == (
-        "./deploy.sh --mode=production --target=eu-west --debug=true"
-    )
+    assert resolved.command == ("./deploy.sh --mode=production --target=eu-west --debug=true")
 
     # Verify env resolution
     assert resolved.env["MODE"] == "production"

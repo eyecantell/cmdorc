@@ -25,7 +25,6 @@ from __future__ import annotations
 import logging
 import os
 import re
-from typing import Optional
 
 from .command_config import CommandConfig
 from .run_result import ResolvedCommand
@@ -44,9 +43,7 @@ ENV_VAR_PATTERN = re.compile(r"\$([A-Z_][A-Z0-9_]*)")
 # =====================================================================
 
 
-def resolve_double_brace_vars(
-    value: str, vars_dict: dict[str, str], *, max_depth: int = 10
-) -> str:
+def resolve_double_brace_vars(value: str, vars_dict: dict[str, str], *, max_depth: int = 10) -> str:
     """
     Resolve {{ var }} occurrences using vars_dict.
     Only replaces double-braced variables, not single-brace placeholders.
@@ -94,10 +91,10 @@ def resolve_double_brace_vars(
 
 
 def merge_vars(
-    global_vars: Optional[dict[str, str]] = None,
-    env_vars: Optional[dict[str, str]] = None,
-    command_vars: Optional[dict[str, str]] = None,
-    call_time_vars: Optional[dict[str, str]] = None,
+    global_vars: dict[str, str] | None = None,
+    env_vars: dict[str, str] | None = None,
+    command_vars: dict[str, str] | None = None,
+    call_time_vars: dict[str, str] | None = None,
 ) -> dict[str, str]:
     """
     Merge variables in priority order (higher priority overrides lower).
@@ -201,7 +198,7 @@ def resolve_runtime_vars(
 def prepare_resolved_command(
     config: CommandConfig,
     global_vars: dict[str, str],
-    call_time_vars: Optional[dict[str, str]] = None,
+    call_time_vars: dict[str, str] | None = None,
     include_env: bool = True,
 ) -> ResolvedCommand:
     """
