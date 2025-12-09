@@ -125,9 +125,10 @@ class LocalSubprocessExecutor(CommandExecutor):
                     )
                 except asyncio.TimeoutError:
                     logger.warning(f"Run {run_id[:8]} timed out after {resolved.timeout_secs}s")
+                    # Mark as failed FIRST (before killing, which might get cancelled)
+                    result.mark_failed(f"Command timed out after {resolved.timeout_secs} seconds")
                     # Kill the process
                     await self._kill_process(process)
-                    result.mark_failed(f"Command timed out after {resolved.timeout_secs} seconds")
                     return
             else:
                 # No timeout
