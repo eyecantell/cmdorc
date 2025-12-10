@@ -1,7 +1,7 @@
 # cmdorc/concurrency_policy.py
 """
 Pure decision logic for determining whether a new run should be allowed
-and which existing runs (if any) need to be cancelled.
+and which existing runs (if any) need to be cancelled first.
 
 Pure decision logic for concurrency, retrigger policies, and debounce.
 
@@ -64,9 +64,12 @@ class ConcurrencyPolicy:
         """
         # Check debounce first: prevent rapid starts regardless of concurrency
         if config.debounce_in_ms > 0 and last_start_time is not None:
-            elapsed_ms = (datetime.now() - last_start_time).total_seconds() * 1000
+            elapsed_ms = int((datetime.now() - last_start_time).total_seconds() * 1000)
             if elapsed_ms < config.debounce_in_ms:
-                return NewRunDecision(allow=False, runs_to_cancel=[])
+                logger.debug(
+                    f"Policy for '{config.name}': debounced ({elapsed_ms:.0f}ms < {config.debounce_in_ms}ms)"
+                )
+                return NewRunDecision(allow=False, disallow_reason="debounce", elapsed_ms=elapsed_ms, runs_to_cancel=[])
 
         active_count = len(active_runs)
 
@@ -87,20 +90,17 @@ class ConcurrencyPolicy:
             return NewRunDecision(allow=True, runs_to_cancel=[])
 
         # Case 3: At or over limit - check on_retrigger policy
-        if config.on_retrigger == "cancel_and_restart":
-            logger.debug(
-                f"Policy for '{config.name}': at limit ({active_count}/{config.max_concurrent}), "
-                f"cancelling all active runs and starting new one"
-            )
-            return NewRunDecision(allow=True, runs_to_cancel=active_runs.copy())
-
         if config.on_retrigger == "ignore":
             logger.debug(
                 f"Policy for '{config.name}': at limit ({active_count}/{config.max_concurrent}), "
                 f"ignoring new trigger"
             )
-            return NewRunDecision(allow=False, runs_to_cancel=[])
+            return NewRunDecision(allow=False, disallow_reason="concurrency_limit", runs_to_cancel=[])
         elif config.on_retrigger == "cancel_and_restart":
-            return NewRunDecision(allow=True, runs_to_cancel=active_runs)
+            logger.debug(
+                f"Policy for '{config.name}': at limit ({active_count}/{config.max_concurrent}), "
+                f"cancelling all active runs and starting new one"
+            )
+            return NewRunDecision(allow=True, runs_to_cancel=active_runs.copy())
         else:
             raise ValueError(f"Invalid on_retrigger value: {config.on_retrigger}")

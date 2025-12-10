@@ -2,22 +2,36 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Literal
 
 from .run_result import RunResult
 
 
-@dataclass
+@dataclass(frozen=True)
 class NewRunDecision:
     """
     Decision returned by ConcurrencyPolicy.decide().
 
     - allow=True  → the requested run may start
     - runs_to_cancel → list of active runs that must be cancelled first
-      (only used when on_retrigger="cancel_and_restart" or cancel_on_triggers)
+      (only used when on_retrigger="cancel_and_restart")
+    - elapsed_ms: Time elapsed since last execution in milliseconds, if applicable (debounce in use).
     """
-
     allow: bool
+    disallow_reason: Literal["debounce", "concurrency_limit"] | None = None
+    """Reason for disallowing the new run. None when allow=True."""
+
+    elapsed_ms: int | None = None
+    """Elapsed milliseconds since last run start, if applicable."""
+
     runs_to_cancel: list[RunResult] = field(default_factory=list)
+
+    def __repr__(self):
+        return (
+            f"NewRunDecision(allow={self.allow}, "
+            f"disallow_reason={self.disallow_reason}, "
+            f"runs_to_cancel={self.runs_to_cancel})"
+        )
 
 
 @dataclass

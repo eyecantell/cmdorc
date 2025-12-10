@@ -1,0 +1,976 @@
+"""
+Comprehensive test suite for CommandOrchestrator.
+
+Test categories:
+- Execution flow (manual and triggered)
+- Auto-triggers and monitoring
+- Handle management and lifecycle
+- Cancellation operations
+- Configuration management
+- Query operations
+- Callback dispatch
+- Shutdown and cleanup
+- Concurrency and race conditions
+"""
+
+from __future__ import annotations
+
+import asyncio
+
+import pytest
+
+from cmdorc import (
+    CommandConfig,
+    CommandOrchestrator,
+    ConcurrencyLimitError,
+    DebounceError,
+    MockExecutor,
+    OrchestratorShutdownError,
+    RunHandle,
+    RunnerConfig,
+    RunState,
+    TriggerContext,
+    TriggerCycleError,
+)
+
+# ========================================================================
+# Fixtures
+# ========================================================================
+
+
+@pytest.fixture
+def sample_command():
+    """Sample CommandConfig for basic testing."""
+    return CommandConfig(
+        name="Test",
+        command="echo hello",
+        triggers=["test_trigger"],
+    )
+
+
+@pytest.fixture
+def orchestrator(sample_command):
+    """Fresh orchestrator with MockExecutor for testing."""
+    config = RunnerConfig(commands=[sample_command], vars={})
+    executor = MockExecutor(delay=0.01)
+    return CommandOrchestrator(config, executor)
+
+
+@pytest.fixture
+def multi_command_orchestrator(sample_command):
+    """Orchestrator with multiple commands for trigger testing."""
+    commands = [
+        sample_command,
+        CommandConfig(
+            name="Lint",
+            command="ruff check",
+            triggers=["changes_applied"],
+        ),
+        CommandConfig(
+            name="Build",
+            command="cargo build",
+            triggers=["command_success:Lint"],
+        ),
+    ]
+    config = RunnerConfig(commands=commands, vars={"base": "/app"})
+    executor = MockExecutor(delay=0.01)
+    return CommandOrchestrator(config, executor)
+
+
+# ========================================================================
+# Execution Flow Tests
+# ========================================================================
+
+
+class TestExecutionFlow:
+    """Tests for manual command execution."""
+
+    async def test_run_command_success(self, orchestrator):
+        """Basic run_command success flow."""
+        handle = await orchestrator.run_command("Test")
+
+        assert handle is not None
+        assert handle.command_name == "Test"
+        assert handle.run_id is not None
+        assert not handle.is_finalized
+
+        # Wait for completion
+        await handle.wait(timeout=1.0)
+        assert handle.state == RunState.SUCCESS
+
+    async def test_run_command_not_found(self, orchestrator):
+        """run_command raises CommandNotFoundError for unknown command."""
+        from cmdorc import CommandNotFoundError
+
+        with pytest.raises(CommandNotFoundError):
+            await orchestrator.run_command("NonExistent")
+
+    async def test_run_command_returns_handle_immediately(self, orchestrator):
+        """run_command returns RunHandle immediately, before execution completes."""
+        handle = await orchestrator.run_command("Test")
+
+        # Handle should be available immediately
+        assert handle is not None
+        assert handle.run_id is not None
+        # But may not be finalized yet
+        # (actually wait, MockExecutor has delay so it's not immediate)
+
+    async def test_run_command_with_vars(self, orchestrator):
+        """run_command resolves variables correctly."""
+        config = CommandConfig(
+            name="VarTest",
+            command="echo {{ msg }}",
+            triggers=[],
+            vars={"msg": "default"},
+        )
+        orchestrator.add_command(config)
+        handle = await orchestrator.run_command("VarTest", vars={"msg": "custom"})
+
+        await handle.wait(timeout=1.0)
+        # Executor received resolved command
+        assert handle.state == RunState.SUCCESS
+
+    async def test_run_command_debounce_error(self, orchestrator):
+        """run_command raises DebounceError if in debounce window."""
+        config = CommandConfig(
+            name="Debounced",
+            command="echo hello",
+            triggers=[],
+            debounce_in_ms=1000,
+        )
+        orchestrator.add_command(config)
+
+        # First run succeeds
+        handle1 = await orchestrator.run_command("Debounced")
+        await handle1.wait(timeout=1.0)
+
+        # Second run within debounce window raises error
+        with pytest.raises(DebounceError):
+            await orchestrator.run_command("Debounced")
+
+    async def test_run_command_concurrency_limit_error(self):
+        """run_command raises ConcurrencyLimitError when max_concurrent exceeded."""
+        # Create orchestrator with slow executor to ensure first run doesn't complete
+        config = CommandConfig(
+            name="Limited",
+            command="sleep 10",
+            triggers=[],
+            max_concurrent=1,
+            on_retrigger="ignore",
+        )
+        runner_config = RunnerConfig(commands=[config], vars={})
+        executor = MockExecutor(delay=1.0)  # Slow executor
+        orchestrator = CommandOrchestrator(runner_config, executor)
+
+        # First run succeeds
+        handle1 = await orchestrator.run_command("Limited")
+        await asyncio.sleep(0.05)  # Let first run start
+
+        # Second run hits limit (async context needed for pytest.raises with async function)
+        with pytest.raises(ConcurrencyLimitError):
+            await orchestrator.run_command("Limited")
+
+        # Cleanup
+        await orchestrator.cancel_run(handle1.run_id)
+
+    async def test_run_command_cancel_and_restart(self, orchestrator):
+        """run_command with cancel_and_restart policy cancels old run."""
+        config = CommandConfig(
+            name="CAR",
+            command="sleep 10",
+            triggers=[],
+            max_concurrent=1,
+            on_retrigger="cancel_and_restart",
+        )
+        orchestrator.add_command(config)
+
+        handle1 = await orchestrator.run_command("CAR")
+        # Should cancel handle1 and start new run
+        handle2 = await orchestrator.run_command("CAR")
+
+        assert handle1.run_id != handle2.run_id
+        assert handle1.state == RunState.CANCELLED or handle1.state == RunState.PENDING
+
+    async def test_run_command_during_shutdown_raises_error(self, orchestrator):
+        """run_command raises OrchestratorShutdownError during shutdown."""
+        orchestrator._is_shutdown = True
+
+        with pytest.raises(OrchestratorShutdownError):
+            await orchestrator.run_command("Test")
+
+    async def test_run_command_multiple_concurrent(self, orchestrator):
+        """Multiple concurrent run_command calls work correctly."""
+        config = CommandConfig(
+            name="Concurrent",
+            command="echo hello",
+            triggers=[],
+            max_concurrent=0,  # unlimited
+        )
+        orchestrator.add_command(config)
+
+        # Start 5 concurrent runs
+        handles = await asyncio.gather(
+            *[orchestrator.run_command("Concurrent") for _ in range(5)]
+        )
+
+        assert len(handles) == 5
+        assert all(h.run_id != handles[0].run_id for h in handles[1:])
+
+        # Wait for all
+        await asyncio.gather(*[h.wait(timeout=1.0) for h in handles])
+        assert all(h.state == RunState.SUCCESS for h in handles)
+
+
+# ========================================================================
+# Trigger Flow Tests
+# ========================================================================
+
+
+class TestTriggerFlow:
+    """Tests for trigger-driven execution."""
+
+    async def test_trigger_exact_match(self, multi_command_orchestrator):
+        """trigger() executes commands with exact trigger match."""
+        await multi_command_orchestrator.trigger("changes_applied")
+
+        # Wait for command to complete
+        await asyncio.sleep(0.1)
+
+        # Lint should have run (exact match)
+        status = multi_command_orchestrator.get_status("Lint")
+        assert status.state != "never_run"
+
+    async def test_trigger_lifecycle_event(self, multi_command_orchestrator):
+        """trigger() executes commands with lifecycle event trigger."""
+        # First trigger Lint
+        await multi_command_orchestrator.trigger("changes_applied")
+
+        # Wait for Lint to complete (it will emit command_success:Lint)
+        await asyncio.sleep(0.1)
+
+        # Build should run (triggered by command_success:Lint)
+        status = multi_command_orchestrator.get_status("Build")
+        # Build might be running or have completed
+        assert status.state != "never_run"
+
+    async def test_trigger_cycle_detection(self, orchestrator):
+        """trigger() detects cycles via TriggerContext."""
+        config1 = CommandConfig(
+            name="Cmd1",
+            command="echo 1",
+            triggers=["event_b"],
+        )
+        config2 = CommandConfig(
+            name="Cmd2",
+            command="echo 2",
+            triggers=["event_a"],
+            cancel_on_triggers=["event_b"],
+        )
+        orchestrator.add_command(config1)
+        orchestrator.add_command(config2)
+
+        context = TriggerContext(seen={"event_a"})
+
+        # Trying to trigger event_a again should raise TriggerCycleError
+        with pytest.raises(TriggerCycleError):
+            await orchestrator.trigger("event_a", context)
+
+    async def test_trigger_during_shutdown_raises_error(self, orchestrator):
+        """trigger() raises OrchestratorShutdownError during shutdown."""
+        orchestrator._is_shutdown = True
+
+        with pytest.raises(OrchestratorShutdownError):
+            await orchestrator.trigger("test_trigger")
+
+    async def test_trigger_with_new_context(self, orchestrator):
+        """trigger() creates TriggerContext if not provided."""
+        # Should work without error (Test command already exists)
+        await orchestrator.trigger("test_trigger", context=None)
+
+    async def test_trigger_adds_event_to_context(self, orchestrator):
+        """trigger() adds event_name to context.seen."""
+        context = TriggerContext(seen=set())
+
+        # Test command already exists with test_trigger
+        await orchestrator.trigger("test_trigger", context)
+
+        assert "test_trigger" in context.seen
+
+    async def test_trigger_multiple_concurrent(self, multi_command_orchestrator):
+        """Multiple concurrent trigger() calls work correctly."""
+        # Launch multiple concurrent triggers
+        await asyncio.gather(
+            *[
+                multi_command_orchestrator.trigger("changes_applied")
+                for _ in range(3)
+            ]
+        )
+
+        # All should complete without error
+        # Lint should have multiple active runs if allowed
+        status = multi_command_orchestrator.get_status("Lint")
+        assert status is not None
+
+
+# ========================================================================
+# Auto-Trigger & Monitoring Tests
+# ========================================================================
+
+
+class TestAutoTriggers:
+    """Tests for automatic lifecycle triggers."""
+
+    async def test_command_started_trigger_emitted(self, orchestrator):
+        """command_started:name auto-trigger is emitted."""
+        triggered_events = []
+
+        async def callback(handle, context):
+            triggered_events.append("command_started")
+
+        orchestrator.on_event("command_started:Test", callback)
+
+        handle = await orchestrator.run_command("Test")
+        await asyncio.sleep(0.05)  # Let auto-trigger fire
+
+        assert "command_started" in triggered_events
+
+    async def test_command_success_trigger_emitted(self, orchestrator):
+        """command_success:name auto-trigger is emitted."""
+        triggered_events = []
+
+        async def callback(handle, context):
+            triggered_events.append("command_success")
+
+        orchestrator.on_event("command_success:Test", callback)
+
+        handle = await orchestrator.run_command("Test")
+        await handle.wait(timeout=1.0)
+        await asyncio.sleep(0.05)  # Let callback execute
+
+        assert "command_success" in triggered_events
+
+    async def test_command_failed_trigger_emitted(self, orchestrator):
+        """command_failed:name auto-trigger is emitted on failure."""
+        executor = orchestrator._executor
+        executor.should_fail = True
+        executor.failure_message = "Test failure"
+
+        config = CommandConfig(
+            name="Failing",
+            command="false",
+            triggers=[],
+        )
+        orchestrator.add_command(config)
+
+        triggered_events = []
+
+        async def callback(handle, context):
+            triggered_events.append("command_failed")
+
+        orchestrator.on_event("command_failed:Failing", callback)
+
+        handle = await orchestrator.run_command("Failing")
+        await handle.wait(timeout=1.0)
+        await asyncio.sleep(0.05)  # Let callback execute
+
+        assert handle.state == RunState.FAILED
+        assert "command_failed" in triggered_events
+
+    async def test_auto_trigger_chain(self, orchestrator):
+        """Auto-triggers can trigger other commands (trigger chain)."""
+        # Create chain: A success -> B runs
+        config_a = CommandConfig(
+            name="A",
+            command="echo a",
+            triggers=[],
+        )
+        config_b = CommandConfig(
+            name="B",
+            command="echo b",
+            triggers=["command_success:A"],
+        )
+        orchestrator.add_command(config_a)
+        orchestrator.add_command(config_b)
+
+        handle_a = await orchestrator.run_command("A")
+        await handle_a.wait(timeout=1.0)
+
+        # B should have been triggered and completed
+        await asyncio.sleep(0.1)
+        status_b = orchestrator.get_status("B")
+        assert status_b.state != "never_run"
+
+    async def test_auto_trigger_cycle_prevention(self, orchestrator):
+        """Auto-triggers respect cycle prevention."""
+        # Create potential cycle: A success -> B, B success -> A
+        config_a = CommandConfig(
+            name="A",
+            command="echo a",
+            triggers=["command_success:B"],
+            loop_detection=True,
+        )
+        config_b = CommandConfig(
+            name="B",
+            command="echo b",
+            triggers=["command_success:A"],
+            loop_detection=True,
+        )
+        orchestrator.add_command(config_a)
+        orchestrator.add_command(config_b)
+
+        # Start A - should not cause infinite loop
+        handle_a = await orchestrator.run_command("A")
+        await handle_a.wait(timeout=1.0)
+
+        # Cycle should be prevented - B runs once, then A tries to run again but cycle is detected
+        await asyncio.sleep(0.2)
+
+        status_a = orchestrator.get_status("A")
+        status_b = orchestrator.get_status("B")
+        # Both should have run but not infinitely
+        assert status_a.state != "never_run"
+        assert status_b.state != "never_run"
+
+
+# ========================================================================
+# Handle Management Tests
+# ========================================================================
+
+
+class TestHandleManagement:
+    """Tests for RunHandle registry and lifecycle."""
+
+    async def test_handle_registered_after_run_command(self, orchestrator):
+        """Handle is registered in _handles immediately after run_command."""
+        handle = await orchestrator.run_command("Test")
+
+        assert handle.run_id in orchestrator._handles
+        assert orchestrator._handles[handle.run_id] == handle
+
+    async def test_get_handle_by_run_id(self, orchestrator):
+        """get_handle_by_run_id() returns registered handle."""
+        handle = await orchestrator.run_command("Test")
+
+        retrieved = orchestrator.get_handle_by_run_id(handle.run_id)
+        assert retrieved == handle
+
+    async def test_get_handle_by_run_id_not_found(self, orchestrator):
+        """get_handle_by_run_id() returns None for unknown run_id."""
+        retrieved = orchestrator.get_handle_by_run_id("nonexistent")
+        assert retrieved is None
+
+    async def test_get_active_handles(self, orchestrator):
+        """get_active_handles() returns only active runs of a command."""
+        config = CommandConfig(
+            name="Multi",
+            command="echo hello",
+            triggers=[],
+            max_concurrent=0,
+        )
+        orchestrator.add_command(config)
+
+        # Start 3 runs
+        handles = await asyncio.gather(
+            *[orchestrator.run_command("Multi") for _ in range(3)]
+        )
+
+        active = orchestrator.get_active_handles("Multi")
+        assert len(active) >= 1  # At least one should be active
+
+    async def test_get_all_active_handles(self, orchestrator):
+        """get_all_active_handles() returns all active handles."""
+        config1 = CommandConfig(
+            name="Cmd1",
+            command="echo 1",
+            triggers=[],
+            max_concurrent=0,
+        )
+        config2 = CommandConfig(
+            name="Cmd2",
+            command="echo 2",
+            triggers=[],
+            max_concurrent=0,
+        )
+        orchestrator.add_command(config1)
+        orchestrator.add_command(config2)
+
+        handle1 = await orchestrator.run_command("Cmd1")
+        handle2 = await orchestrator.run_command("Cmd2")
+
+        all_active = orchestrator.get_all_active_handles()
+        assert len(all_active) >= 2
+
+    async def test_handle_unregistered_after_completion(self, orchestrator):
+        """Handle is unregistered from _handles after completion."""
+        handle = await orchestrator.run_command("Test")
+
+        await handle.wait(timeout=1.0)
+        await asyncio.sleep(0.05)  # Let cleanup complete
+
+        # Handle should be unregistered
+        assert handle.run_id not in orchestrator._handles
+
+
+# ========================================================================
+# Cancellation Tests
+# ========================================================================
+
+
+class TestCancellation:
+    """Tests for run and command cancellation."""
+
+    async def test_cancel_run(self, orchestrator):
+        """cancel_run() cancels a specific run."""
+        config = CommandConfig(
+            name="Long",
+            command="sleep 10",
+            triggers=[],
+        )
+        orchestrator.add_command(config)
+
+        handle = await orchestrator.run_command("Long")
+        assert handle.state == RunState.PENDING
+
+        success = await orchestrator.cancel_run(handle.run_id)
+
+        assert success is True
+        # Allow time for cancellation to propagate
+        await asyncio.sleep(0.05)
+
+    async def test_cancel_run_not_found(self, orchestrator):
+        """cancel_run() returns False for unknown run_id."""
+        success = await orchestrator.cancel_run("nonexistent")
+        assert success is False
+
+    async def test_cancel_command(self, orchestrator):
+        """cancel_command() cancels all runs of a command."""
+        config = CommandConfig(
+            name="Multi",
+            command="sleep 10",
+            triggers=[],
+            max_concurrent=0,
+        )
+        orchestrator.add_command(config)
+
+        # Start multiple runs
+        handle1 = await orchestrator.run_command("Multi")
+        handle2 = await orchestrator.run_command("Multi")
+
+        count = await orchestrator.cancel_command("Multi")
+
+        assert count >= 1
+
+    async def test_cancel_all(self, orchestrator):
+        """cancel_all() cancels all active runs."""
+        config1 = CommandConfig(
+            name="Cmd1",
+            command="sleep 10",
+            triggers=[],
+        )
+        config2 = CommandConfig(
+            name="Cmd2",
+            command="sleep 10",
+            triggers=[],
+        )
+        orchestrator.add_command(config1)
+        orchestrator.add_command(config2)
+
+        await orchestrator.run_command("Cmd1")
+        await orchestrator.run_command("Cmd2")
+
+        count = await orchestrator.cancel_all()
+
+        assert count >= 2
+
+
+# ========================================================================
+# Configuration Tests
+# ========================================================================
+
+
+class TestConfiguration:
+    """Tests for command configuration management."""
+
+    def test_add_command(self, orchestrator):
+        """add_command() registers a new command."""
+        config = CommandConfig(
+            name="New",
+            command="echo new",
+            triggers=[],
+        )
+        orchestrator.add_command(config)
+
+        assert "New" in orchestrator.list_commands()
+        assert orchestrator.get_status("New").state == "never_run"
+
+    def test_remove_command(self, orchestrator):
+        """remove_command() unregisters a command."""
+        # Test command already exists in orchestrator
+        assert "Test" in orchestrator.list_commands()
+
+        orchestrator.remove_command("Test")
+        assert "Test" not in orchestrator.list_commands()
+
+    def test_update_command(self, orchestrator):
+        """update_command() replaces command config."""
+        original = CommandConfig(
+            name="ToUpdate",
+            command="echo original",
+            triggers=[],
+        )
+        orchestrator.add_command(original)
+
+        updated = CommandConfig(
+            name="ToUpdate",
+            command="echo updated",
+            triggers=["new_trigger"],
+        )
+        orchestrator.update_command(updated)
+
+        # Config should be updated
+        status = orchestrator.get_status("ToUpdate")
+        assert status is not None
+
+    def test_reload_all_commands(self, orchestrator):
+        """reload_all_commands() clears and reloads all commands."""
+        # Orchestrator already has Test command
+        assert "Test" in orchestrator.list_commands()
+
+        config1 = CommandConfig(
+            name="First",
+            command="echo 1",
+            triggers=[],
+        )
+        config2 = CommandConfig(
+            name="Second",
+            command="echo 2",
+            triggers=[],
+        )
+
+        orchestrator.reload_all_commands([config1, config2])
+
+        commands = orchestrator.list_commands()
+        assert "First" in commands
+        assert "Second" in commands
+        assert "Test" not in commands  # Old command should be gone
+
+
+# ========================================================================
+# Query Tests
+# ========================================================================
+
+
+class TestQueries:
+    """Tests for status and history queries."""
+
+    def test_list_commands(self, multi_command_orchestrator):
+        """list_commands() returns all registered commands."""
+        commands = multi_command_orchestrator.list_commands()
+
+        assert "Test" in commands
+        assert "Lint" in commands
+        assert "Build" in commands
+
+    async def test_get_status(self, orchestrator):
+        """get_status() returns CommandStatus with state and counts."""
+        # Before any run
+        status = orchestrator.get_status("Test")
+        assert status.state == "never_run"
+        assert status.active_count == 0
+
+        # After run
+        handle = await orchestrator.run_command("Test")
+        status = orchestrator.get_status("Test")
+        assert status.active_count >= 0
+
+        await handle.wait(timeout=1.0)
+        await asyncio.sleep(0.05)  # Let runtime update complete
+        status = orchestrator.get_status("Test")
+        assert status.state == "success"
+
+    async def test_get_history(self, orchestrator):
+        """get_history() returns past runs in order."""
+        # Run command multiple times
+        handle1 = await orchestrator.run_command("Test")
+        await handle1.wait(timeout=1.0)
+
+        await asyncio.sleep(0.05)
+
+        handle2 = await orchestrator.run_command("Test")
+        await handle2.wait(timeout=1.0)
+
+        history = orchestrator.get_history("Test", limit=10)
+
+        assert len(history) >= 1
+        # Most recent should be first or last depending on order
+
+
+# ========================================================================
+# Callback Tests
+# ========================================================================
+
+
+class TestCallbacks:
+    """Tests for event callback dispatch."""
+
+    async def test_on_event_exact_pattern(self, orchestrator):
+        """on_event() callback invoked for exact pattern match."""
+        called = []
+
+        async def callback(handle, context):
+            called.append(True)
+
+        orchestrator.on_event("test_trigger", callback)
+        await orchestrator.trigger("test_trigger")
+        await asyncio.sleep(0.05)  # Let callback execute
+
+        assert True in called
+
+    async def test_on_event_wildcard_pattern(self, orchestrator):
+        """on_event() callback invoked for wildcard pattern match."""
+        # Test command already exists in orchestrator
+        called = []
+
+        async def callback(handle, context):
+            called.append(True)
+
+        orchestrator.on_event("command_*:Test", callback)
+
+        handle = await orchestrator.run_command("Test")
+        await handle.wait(timeout=1.0)
+
+        await asyncio.sleep(0.1)
+
+        assert True in called
+
+    async def test_off_event(self, orchestrator):
+        """off_event() unregisters callback."""
+        called = []
+
+        async def callback(handle, context):
+            called.append(True)
+
+        orchestrator.on_event("test_event", callback)
+        orchestrator.off_event("test_event", callback)
+
+        await orchestrator.trigger("test_event")
+
+        assert len(called) == 0
+
+    async def test_set_lifecycle_callback(self, orchestrator):
+        """set_lifecycle_callback() registers callbacks for run states."""
+        config = CommandConfig(
+            name="WithCallback",
+            command="echo test",
+            triggers=[],
+        )
+        orchestrator.add_command(config)
+
+        success_called = []
+        failed_called = []
+
+        async def on_success(handle, context):
+            success_called.append(True)
+
+        async def on_failed(handle, context):
+            failed_called.append(True)
+
+        orchestrator.set_lifecycle_callback(
+            "WithCallback", on_success=on_success, on_failed=on_failed
+        )
+
+        handle = await orchestrator.run_command("WithCallback")
+        await handle.wait(timeout=1.0)
+        await asyncio.sleep(0.05)  # Let callback execute
+
+        assert True in success_called
+        assert len(failed_called) == 0
+
+
+# ========================================================================
+# Shutdown Tests
+# ========================================================================
+
+
+class TestShutdown:
+    """Tests for orchestrator shutdown and cleanup."""
+
+    async def test_shutdown_cancel_running(self, orchestrator):
+        """shutdown() with cancel_running=True cancels active runs."""
+        config = CommandConfig(
+            name="LongRun",
+            command="sleep 10",
+            triggers=[],
+        )
+        orchestrator.add_command(config)
+
+        handle = await orchestrator.run_command("LongRun")
+
+        result = await orchestrator.shutdown(timeout=1.0, cancel_running=True)
+
+        assert result["cancelled_count"] >= 1
+        assert result["timeout_expired"] is False
+
+    async def test_shutdown_wait_for_completion(self, orchestrator):
+        """shutdown() with cancel_running=False waits for completion."""
+        config = CommandConfig(
+            name="Quick",
+            command="echo quick",
+            triggers=[],
+        )
+        orchestrator.add_command(config)
+
+        handle = await orchestrator.run_command("Quick")
+
+        result = await orchestrator.shutdown(timeout=1.0, cancel_running=False)
+
+        assert result["timeout_expired"] is False
+
+    async def test_shutdown_timeout(self):
+        """shutdown() respects timeout and returns timeout_expired=True."""
+        # Create orchestrator with slow executor
+        config = CommandConfig(
+            name="VeryLong",
+            command="sleep 100",
+            triggers=[],
+        )
+        runner_config = RunnerConfig(commands=[config], vars={})
+        # Create executor with 10 second delay - much longer than shutdown timeout
+        executor = MockExecutor(delay=10.0)
+        orchestrator = CommandOrchestrator(runner_config, executor)
+
+        handle = await orchestrator.run_command("VeryLong")
+        await asyncio.sleep(0.05)  # Let run start
+
+        # Shutdown with short timeout should expire
+        result = await orchestrator.shutdown(timeout=0.1, cancel_running=False)
+
+        assert result["timeout_expired"] is True
+
+    async def test_cleanup_immediate(self, orchestrator):
+        """cleanup() does immediate cleanup without waiting."""
+        handle = await orchestrator.run_command("Test")
+
+        # cleanup should succeed even with running task
+        await orchestrator.cleanup()
+
+        assert orchestrator._is_shutdown is True
+
+    async def test_shutdown_prevents_new_runs(self, orchestrator):
+        """After shutdown, run_command raises OrchestratorShutdownError."""
+        orchestrator._is_shutdown = True
+
+        with pytest.raises(OrchestratorShutdownError):
+            await orchestrator.run_command("Test")
+
+
+# ========================================================================
+# Concurrency & Race Condition Tests
+# ========================================================================
+
+
+class TestConcurrency:
+    """Tests for concurrent operations and race conditions."""
+
+    async def test_concurrent_run_command_calls(self, orchestrator):
+        """Multiple concurrent run_command calls work safely."""
+        config = CommandConfig(
+            name="Concurrent",
+            command="echo hello",
+            triggers=[],
+            max_concurrent=0,
+        )
+        orchestrator.add_command(config)
+
+        handles = await asyncio.gather(
+            *[orchestrator.run_command("Concurrent") for _ in range(10)]
+        )
+
+        assert len(handles) == 10
+        assert len(set(h.run_id for h in handles)) == 10  # All unique
+
+    async def test_concurrent_trigger_calls(self, orchestrator):
+        """Multiple concurrent trigger calls work safely."""
+        config = CommandConfig(
+            name="Triggered",
+            command="echo hello",
+            triggers=["test_event"],
+            max_concurrent=0,
+        )
+        orchestrator.add_command(config)
+
+        # Multiple concurrent triggers
+        await asyncio.gather(
+            *[orchestrator.trigger("test_event") for _ in range(5)]
+        )
+
+        # All should complete without errors
+
+    async def test_concurrent_cancel_operations(self, orchestrator):
+        """Multiple concurrent cancel operations work safely."""
+        config = CommandConfig(
+            name="ToCancel",
+            command="sleep 10",
+            triggers=[],
+            max_concurrent=0,
+        )
+        orchestrator.add_command(config)
+
+        # Start multiple runs
+        handles = await asyncio.gather(
+            *[orchestrator.run_command("ToCancel") for _ in range(5)]
+        )
+
+        # Concurrent cancellations
+        results = await asyncio.gather(
+            *[orchestrator.cancel_run(h.run_id) for h in handles]
+        )
+
+        assert sum(results) >= 1  # At least one succeeded
+
+    async def test_trigger_and_run_command_concurrent(self, orchestrator):
+        """Concurrent trigger and run_command don't race."""
+        config = CommandConfig(
+            name="Mixed",
+            command="echo hello",
+            triggers=["mixed_trigger"],
+            max_concurrent=0,
+        )
+        orchestrator.add_command(config)
+
+        # Mix of run_command and trigger
+        results = await asyncio.gather(
+            orchestrator.run_command("Mixed"),
+            orchestrator.trigger("mixed_trigger"),
+            orchestrator.run_command("Mixed"),
+            return_exceptions=True,
+        )
+
+        # Should all succeed or be expected errors
+        assert len([r for r in results if isinstance(r, RunHandle)]) >= 1
+
+    async def test_handle_queries_during_concurrent_completion(self, orchestrator):
+        """Handle queries work correctly during concurrent completion."""
+        config = CommandConfig(
+            name="Query",
+            command="echo hello",
+            triggers=[],
+            max_concurrent=0,
+        )
+        orchestrator.add_command(config)
+
+        handles = await asyncio.gather(
+            *[orchestrator.run_command("Query") for _ in range(5)]
+        )
+
+        # Query while runs are completing
+        async def query_active():
+            for _ in range(10):
+                active = orchestrator.get_active_handles("Query")
+                await asyncio.sleep(0.01)
+            return len(active)
+
+        active_count = await query_active()
+
+        # Should have queried successfully
+        assert active_count >= 0

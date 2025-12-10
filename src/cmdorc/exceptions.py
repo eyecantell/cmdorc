@@ -118,3 +118,63 @@ class TriggerCycleError(CmdorcError):
         self.cycle_path = cycle_path
         cycle_display = " -> ".join(cycle_path) + f" -> {event_name}"
         super().__init__(f"Trigger cycle detected: {cycle_display}")
+
+
+class ConcurrencyLimitError(CmdorcError):
+    """
+    Raised when command execution is denied due to concurrency policy.
+
+    This occurs when:
+    - max_concurrent limit is reached AND
+    - on_retrigger="ignore" (so new run is blocked instead of cancelling old ones)
+
+    The error includes context about the limit and current active runs to aid
+    debugging and decision-making about whether to retry.
+
+    Attributes:
+        command_name: Name of the command
+        active_count: Number of currently active runs
+        max_concurrent: Maximum allowed concurrent runs
+        policy: The on_retrigger policy in effect
+    """
+
+    def __init__(
+        self,
+        command_name: str,
+        active_count: int,
+        max_concurrent: int,
+        policy: str = "ignore",
+    ):
+        """
+        Initialize ConcurrencyLimitError with context.
+
+        Args:
+            command_name: Name of the command
+            active_count: Number of currently active runs
+            max_concurrent: Maximum allowed concurrent runs
+            policy: The on_retrigger policy in effect
+        """
+        self.command_name = command_name
+        self.active_count = active_count
+        self.max_concurrent = max_concurrent
+        self.policy = policy
+        super().__init__(
+            f"Command '{command_name}' cannot start: "
+            f"{active_count}/{max_concurrent} active, on_retrigger={policy}"
+        )
+
+
+class OrchestratorShutdownError(CmdorcError):
+    """
+    Raised when an operation is rejected during orchestrator shutdown.
+
+    This occurs when:
+    - run_command() is called while shutdown is in progress
+    - trigger() is called while shutdown is in progress
+    - Any other public method is called after _is_shutdown=True
+
+    This error prevents new operations from starting during graceful shutdown,
+    ensuring clean lifecycle management.
+    """
+
+    pass

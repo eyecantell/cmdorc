@@ -1,13 +1,16 @@
 from .command_config import CommandConfig, RunnerConfig
 from .command_executor import CommandExecutor
+from .command_orchestrator import CommandOrchestrator
 from .command_runtime import CommandRuntime
 from .concurrency_policy import ConcurrencyPolicy
 from .exceptions import (
     CmdorcError,
     CommandNotFoundError,
+    ConcurrencyLimitError,
     ConfigValidationError,
     DebounceError,
     ExecutorError,
+    OrchestratorShutdownError,
     TriggerCycleError,
 )
 from .load_config import load_config
@@ -21,6 +24,7 @@ from .types import CommandStatus, NewRunDecision, TriggerContext
 __all__ = [
     # Core Components
     "CommandConfig",
+    "CommandOrchestrator",
     "CommandRuntime",
     "CommandStatus",
     "ConcurrencyPolicy",
@@ -40,8 +44,10 @@ __all__ = [
     # Exceptions
     "CmdorcError",
     "CommandNotFoundError",
+    "ConcurrencyLimitError",
     "ConfigValidationError",
     "DebounceError",
     "ExecutorError",
+    "OrchestratorShutdownError",
     "TriggerCycleError",
 ]
