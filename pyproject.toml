@@ -44,6 +44,11 @@ test = [
     "pytest-cov>=7.0.0",
     "ruff>=0.14.7",
 ]
+examples = [
+    "watchdog>=3.0.0",      # File system monitoring for file watching examples
+    "textual>=0.47.0",      # TUI framework for interactive examples
+    "rich>=13.0.0",         # Rich text formatting for TUI examples
+]
 
 [project.urls]
 Homepage = "https://github.com/eyecantell/cmdorc"

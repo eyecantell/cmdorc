@@ -1,0 +1,56 @@
+# CI Pipeline Configuration
+#
+# Demonstrates a complete CI/CD workflow:
+# Lint → Test → Build → Success notification
+#
+# Key features:
+# - Chained commands using lifecycle events
+# - Debouncing to prevent rapid re-runs
+# - Timeout for long-running tasks
+# - History tracking for audit trail
+
+[variables]
+# Build configuration
+project_name = "myapp"
+build_dir = "build"
+test_timeout = "30"
+
+[[command]]
+name = "Lint"
+command = "echo '📝 Linting {{ project_name }}...'; sleep 0.5; echo '✓ Lint passed'"
+triggers = ["start", "Lint"]
+max_concurrent = 1
+timeout_secs = 60
+debounce_in_ms = 500
+keep_history = 10
+loop_detection = true
+
+[[command]]
+name = "Test"
+command = "echo '🧪 Running tests (timeout={{ test_timeout }}s)...'; sleep 0.5; echo '✓ All tests passed'"
+triggers = ["command_success:Lint", "Test"]
+max_concurrent = 1
+timeout_secs = 90
+keep_history = 10
+loop_detection = true
+
+[[command]]
+name = "Build"
+command = "echo '🔨 Building {{ project_name }} to {{ build_dir }}/...'; sleep 0.5; echo '✓ Build succeeded'"
+triggers = ["command_success:Test", "Build"]
+max_concurrent = 1
+timeout_secs = 120
+keep_history = 10
+loop_detection = true
+
+[[command]]
+name = "Notify"
+command = "echo '✅ CI Pipeline completed successfully'; echo 'Project: {{ project_name }}'"
+triggers = ["command_success:Build"]
+max_concurrent = 1
+
+[[command]]
+name = "NotifyFailure"
+command = "echo '❌ CI Pipeline failed'; echo 'Check logs for details'"
+triggers = ["command_failed:Lint", "command_failed:Test", "command_failed:Build"]
+max_concurrent = 1

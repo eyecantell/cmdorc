@@ -1,0 +1,43 @@
+# Simple workflow configuration in TOML
+#
+# This file demonstrates the cmdorc TOML configuration format.
+# Features shown:
+# - Global variables section
+# - Command definitions with triggers
+# - Variable templating with {{ var }}
+# - Workflow chaining with lifecycle events (command_success:Name)
+
+[variables]
+# Global variables available to all commands
+# Can be overridden at runtime
+message = "Configuration loaded"
+base_dir = "."
+
+[[command]]
+# Lint command - runs when triggered with "lint" or "start"
+name = "Lint"
+command = "echo '📝 Linting: {{ message }}...'"
+triggers = ["Lint", "start"]
+max_concurrent = 1
+
+[[command]]
+# Format command - runs when triggered with "format" or "start"
+name = "Format"
+command = "echo '✨ Formatting: {{ message }}...'"
+triggers = ["Format", "start"]
+max_concurrent = 1
+
+[[command]]
+# Test command - runs after Lint succeeds
+name = "Test"
+command = "echo '🧪 Running tests from {{ base_dir }}...'"
+triggers = ["command_success:Lint", "Test"]
+# This command will only run if Lint completes successfully
+# Thanks to the trigger "command_success:Lint"
+
+[[command]]
+# All-in-one command - runs the full workflow
+name = "CI"
+command = "echo '🚀 Running full CI workflow...'"
+triggers = ["CI"]
+# In a real project, this might chain multiple commands

@@ -1,0 +1,33 @@
+# Auto-Test Configuration
+#
+# Automatically runs tests when Python files change.
+# Features:
+# - Debounce to avoid running tests too frequently
+# - Timeout to prevent hanging tests
+# - Notifications on success/failure
+
+[variables]
+test_dir = "tests"
+min_interval_ms = "1000"
+
+[[command]]
+name = "RunTests"
+command = "echo '🧪 Running tests...'; sleep 0.5; echo '✓ All tests passed'"
+triggers = ["file_changed"]
+max_concurrent = 1
+# Debounce: wait at least 1 second between runs
+debounce_in_ms = 1000
+timeout_secs = 60
+keep_history = 10
+
+[[command]]
+name = "NotifySuccess"
+command = "echo '✅ Tests passed - great work!'"
+triggers = ["command_success:RunTests"]
+max_concurrent = 1
+
+[[command]]
+name = "NotifyFailure"
+command = "echo '❌ Tests failed - check the output above'"
+triggers = ["command_failed:RunTests"]
+max_concurrent = 1
