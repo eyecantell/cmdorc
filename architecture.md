@@ -675,6 +675,8 @@ class RunResult:
     resolved_command: ResolvedCommand | None
     # Comment (for cancellation reasons, notes, etc.)
     comment: str
+    _completion_callback: Callable[[], None] | None = None
+    _is_finalized: bool = False
 ```
 
 **Critical Rules:**
@@ -705,6 +707,7 @@ def _finalize() -> None:
 
 **Helper Properties:**
 ```python
+
 @property
 def duration_secs(self) -> float | None
 
@@ -713,7 +716,10 @@ def duration_str(self) -> str  # Human-readable: "452ms", "2.4s", "1m 23s"
 
 @property
 def is_finalized(self) -> bool
+
+def _set_completion_callback(callback)  # Idempotent for same callback
 ```
+**Note:** Mutable during execution; treat as immutable after `is_finalized=True`.
 
 ### RunHandle Owns the Future
 
@@ -1001,11 +1007,8 @@ class MockExecutor(CommandExecutor):
 6. **Executor System** - ABC, `LocalSubprocessExecutor`, `MockExecutor` (48 tests)
 7. **Exception System** - `CmdorcError` hierarchy with 40 tests, 100% coverage
 8. **RunHandle** - Public async facade for command runs (33 tests, 100% coverage)
-
-### 🚧 Not Yet Started
-
-1. **TriggerEngine** - Pattern matching, callbacks, cycle prevention (planned)
-2. **CommandOrchestrator** - Main coordinator tying everything together (planned)
+9. **TriggerEngine** - Pattern matching, callbacks, cycle prevention (planned)
+10. **CommandOrchestrator** - Main coordinator tying everything together (planned)
 
 ### 📊 Code Statistics
 
@@ -1036,6 +1039,7 @@ class MockExecutor(CommandExecutor):
 ### Why Separate ResolvedCommand?
 - **Clean API** - Executor receives concrete instructions
 - **Testability** - Mock executor doesn't need variable resolution logic
+- **Clarity** - Obvious boundary between data and behavior
 - **Invariants** - Once resolved, immutable and complete
 
 ### Why TriggerContext.seen?
