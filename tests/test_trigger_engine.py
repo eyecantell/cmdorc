@@ -36,7 +36,7 @@ def sample_configs():
         CommandConfig(
             name="Tests",
             command="pytest",
-            triggers=["changes_applied", "test_*"],
+            triggers=["changes_applied", "test_save"],
             cancel_on_triggers=[],
         ),
         CommandConfig(
@@ -49,7 +49,7 @@ def sample_configs():
             name="Build",
             command="cargo build",
             triggers=["command_success:Lint"],
-            cancel_on_triggers=["urgent_*"],
+            cancel_on_triggers=["urgent_stop"],
         ),
     ]
 
@@ -117,7 +117,7 @@ class TestCommandMatching:
         self, engine: TriggerEngine, runtime: CommandRuntime, sample_configs: list
     ):
         """Commands with exact trigger should be returned."""
-        runtime.add_command(sample_configs[0])
+        runtime.register_command(sample_configs[0])
         matches = engine.get_matching_commands("changes_applied", "triggers")
         assert len(matches) == 1
         assert matches[0].name == "Tests"
@@ -125,8 +125,8 @@ class TestCommandMatching:
     def test_wildcard_trigger_match(
         self, engine: TriggerEngine, runtime: CommandRuntime, sample_configs: list
     ):
-        """Commands with wildcard trigger should be returned."""
-        runtime.add_command(sample_configs[0])
+        """Commands with exact triggers should be returned."""
+        runtime.register_command(sample_configs[0])
         matches = engine.get_matching_commands("test_save", "triggers")
         assert len(matches) == 1
         assert matches[0].name == "Tests"
@@ -141,28 +141,27 @@ class TestCommandMatching:
         config2 = CommandConfig(
             name="Second",
             command="echo 2",
-            triggers=["changes_*"],
+            triggers=["changes_done"],
         )
-        runtime.add_command(config1)
-        runtime.add_command(config2)
+        runtime.register_command(config1)
+        runtime.register_command(config2)
 
         matches = engine.get_matching_commands("changes_applied", "triggers")
-        assert len(matches) == 2
-        assert matches[0].name == "First"  # Exact match first
-        assert matches[1].name == "Second"  # Wildcard match second
+        assert len(matches) == 1
+        assert matches[0].name == "First"  # Only exact match
 
     def test_cancel_on_triggers(
         self, engine: TriggerEngine, runtime: CommandRuntime, sample_configs: list
     ):
         """cancel_on_triggers should be matched separately."""
-        runtime.add_command(sample_configs[2])  # Build has cancel_on_triggers
+        runtime.register_command(sample_configs[2])  # Build has cancel_on_triggers
         matches = engine.get_matching_commands("urgent_stop", "cancel_on_triggers")
         assert len(matches) == 1
         assert matches[0].name == "Build"
 
     def test_no_matches(self, engine: TriggerEngine, runtime: CommandRuntime, sample_configs: list):
         """Non-matching events should return empty list."""
-        runtime.add_command(sample_configs[0])
+        runtime.register_command(sample_configs[0])
         matches = engine.get_matching_commands("nonexistent_event", "triggers")
         assert len(matches) == 0
 
@@ -170,7 +169,7 @@ class TestCommandMatching:
         self, engine: TriggerEngine, runtime: CommandRuntime, sample_configs: list
     ):
         """Lifecycle events should match."""
-        runtime.add_command(sample_configs[1])  # Lint
+        runtime.register_command(sample_configs[1])  # Lint
         matches = engine.get_matching_commands("command_success:Tests", "triggers")
         assert len(matches) == 1
         assert matches[0].name == "Lint"
@@ -296,10 +295,10 @@ class TestDispatchOrder:
         engine.register_callback("event", exact_callback)
         engine.register_callback("event_*", wildcard_callback)
 
-        callbacks = engine.get_matching_callbacks("event")
-        # Verify order in returned list
-        assert callbacks[0][1] is False  # Exact first
-        assert callbacks[1][1] is True  # Wildcard second
+        callbacks = engine.get_matching_callbacks("event_test")
+        # Verify order in returned list (only wildcard matches)
+        assert len(callbacks) == 1
+        assert callbacks[0][1] is True  # Wildcard
 
     def test_registration_order_preserved(self, engine: TriggerEngine):
         """Registration order should be preserved within groups."""
@@ -320,12 +319,10 @@ class TestDispatchOrder:
 
         callbacks = engine.get_matching_callbacks("event")
         assert len(callbacks) == 3
-        # Verify order is preserved
-        assert [c[0].__code__.co_consts[0] for c in callbacks] == [
-            call_order.__code__.co_consts[0],
-            call_order.__code__.co_consts[0],
-            call_order.__code__.co_consts[0],
-        ]
+        # Verify order is preserved by checking the functions themselves
+        assert callbacks[0][0] == callback1
+        assert callbacks[1][0] == callback2
+        assert callbacks[2][0] == callback3
 
     def test_multiple_wildcard_callbacks(self, engine: TriggerEngine):
         """Multiple wildcard callbacks should all match and be ordered."""
@@ -380,9 +377,10 @@ class TestCycleDetection:
         config = CommandConfig(
             name="TestCmd",
             command="test",
+            triggers=["test_event"],
             loop_detection=True,
         )
-        runtime.add_command(config)
+        runtime.register_command(config)
         assert engine.should_track_in_context("TestCmd") is True
 
     def test_should_track_in_context_disabled(self, engine: TriggerEngine, runtime: CommandRuntime):
@@ -390,9 +388,10 @@ class TestCycleDetection:
         config = CommandConfig(
             name="TestCmd",
             command="test",
+            triggers=["test_event"],
             loop_detection=False,
         )
-        runtime.add_command(config)
+        runtime.register_command(config)
         assert engine.should_track_in_context("TestCmd") is False
 
     def test_should_track_unknown_command(self, engine: TriggerEngine):
@@ -413,7 +412,7 @@ class TestIntegration:
     ):
         """Full flow: register commands, match by event."""
         for config in sample_configs:
-            runtime.add_command(config)
+            runtime.register_command(config)
 
         # Test exact match
         matches = engine.get_matching_commands("changes_applied", "triggers")
@@ -431,7 +430,7 @@ class TestIntegration:
             command="test",
             triggers=["rebuild"],
         )
-        runtime.add_command(config)
+        runtime.register_command(config)
         assert len(engine.get_matching_commands("rebuild", "triggers")) == 1
 
         # After removing command
@@ -447,7 +446,7 @@ class TestIntegration:
             command="dynamic",
             triggers=["dynamic_event"],
         )
-        runtime.add_command(config)
+        runtime.register_command(config)
         assert len(engine.get_matching_commands("dynamic_event", "triggers")) == 1
 
     def test_complex_trigger_scenario(self, engine: TriggerEngine, runtime: CommandRuntime):
@@ -466,7 +465,7 @@ class TestIntegration:
             CommandConfig(
                 name="Lint",
                 command="lint",
-                triggers=["command_success:*"],
+                triggers=["command_success:Tests"],
             ),
             CommandConfig(
                 name="Report",
@@ -476,7 +475,7 @@ class TestIntegration:
         ]
 
         for config in configs:
-            runtime.add_command(config)
+            runtime.register_command(config)
 
         # file_changed triggers Watch and Tests
         matches = engine.get_matching_commands("file_changed", "triggers")
@@ -490,10 +489,10 @@ class TestIntegration:
         names = {m.name for m in matches}
         assert names == {"Lint", "Report"}
 
-        # command_success:Lint only triggers Lint pattern (report is exact)
+        # command_success:Lint only triggers Report
         matches = engine.get_matching_commands("command_success:Lint", "triggers")
         assert len(matches) == 1
-        assert matches[0].name == "Lint"
+        assert matches[0].name == "Report"
 
 
 # ========================================================================

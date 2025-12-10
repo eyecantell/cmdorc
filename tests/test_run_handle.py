@@ -341,26 +341,37 @@ class TestIntegrationWithExecutor:
         # Wait for executor task to finish
         await task
 
-    async def test_multiple_handles_same_result(self):
-        """Multiple handles monitoring same result should all complete."""
+    async def test_multiple_waiters_same_handle(self):
+        """Multiple concurrent wait() calls on the same handle should all complete."""
         result = RunResult(command_name="test", run_id="run-1")
+        handle = RunHandle(result)
 
-        # Create multiple handles for same result
-        handles = [RunHandle(result) for _ in range(3)]
+        # Start multiple waiters on the SAME handle
+        tasks = [handle.wait() for _ in range(3)]
+        await asyncio.sleep(0.01)  # Let them start
 
-        # Start all waiters
-        tasks = [h.wait() for h in handles]
-
-        # Let them start waiting
-        await asyncio.sleep(0.01)
-
-        # Complete the run
         result.mark_success()
 
-        # All should complete
         results = await asyncio.gather(*tasks)
-        assert all(r is result for r in results)
         assert len(results) == 3
+        assert all(r is result for r in results)
+        assert all(r.state == RunState.SUCCESS for r in results)
+
+    async def test_multiple_independent_runs(self):
+        """Multiple independent runs with their own handles should all complete."""
+        results = [
+            RunResult(command_name="test", run_id=f"run-{i}") for i in range(3)
+        ]
+        handles = [RunHandle(r) for r in results]
+        tasks = [h.wait() for h in handles]
+
+        await asyncio.sleep(0.01)
+
+        for r in results:
+            r.mark_success()
+
+        completed = await asyncio.gather(*tasks)
+        assert all(r.state == RunState.SUCCESS for r in results)
 
 
 # =====================================================================
