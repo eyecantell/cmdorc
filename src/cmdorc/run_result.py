@@ -3,9 +3,10 @@ from __future__ import annotations
 
 import datetime
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -101,9 +102,7 @@ class RunResult:
     # ------------------------------------------------------------------ #
     # Internal callback for run finalization
     # ------------------------------------------------------------------ #
-    _completion_callback: Callable[[], None] | None = field(
-        default=None, repr=False, compare=False
-    )
+    _completion_callback: Callable[[], None] | None = field(default=None, repr=False, compare=False)
 
     _is_finalized: bool = field(init=False, default=False)
     """Internal flag set by _finalize()."""
@@ -189,7 +188,7 @@ class RunResult:
         hrs, mins = divmod(mins, 60)
         if hrs < 24:
             return f"{int(hrs)}h {int(mins)}m"
-        
+
         days, hrs = divmod(hrs, 24)
         return f"{int(days)}d {int(hrs)}h"
 
@@ -222,17 +221,18 @@ class RunResult:
             "duration_str": self.duration_str,
             "resolved_command": self.resolved_command.to_dict() if self.resolved_command else None,
         }
-    
 
-    # ------------------------------------------------------------------ #  
+    # ------------------------------------------------------------------ #
     # Internal callback for run finalization
     # ------------------------------------------------------------------ #
-    
+
     def _set_completion_callback(self, callback: Callable[[], None]) -> None:
         """Internal: register a callback to be called once on finalization."""
         if self._completion_callback is not None:
             if self._completion_callback == callback:
                 return  # Idempotent for same callback
-            raise ValueError(f"Completion callback can only be set once. Old callback exists as {self._completion_callback}, cannot set new one as {callback}.")
-        
+            raise ValueError(
+                f"Completion callback can only be set once. Old callback exists as {self._completion_callback}, cannot set new one as {callback}."
+            )
+
         self._completion_callback = callback

@@ -9,14 +9,15 @@ Cancellation is handled by the orchestrator, not by RunHandle.
 """
 
 from __future__ import annotations
-import logging
 
 import asyncio
+import logging
 from typing import Final
 
 from .run_result import RunResult, RunState
 
 logger = logging.getLogger(__name__)
+
 
 class RunHandle:
     """
@@ -59,7 +60,7 @@ class RunHandle:
 
         # Try to get loop now — if none, defer all setup
         try:
-            loop = asyncio.get_running_loop()
+            asyncio.get_running_loop()
         except RuntimeError:
             return  # Fully defer to wait()
 
@@ -233,7 +234,7 @@ class RunHandle:
             f"RunHandle(command_name={self.command_name!r}, "
             f"run_id={self.run_id!r}, state={self.state.name})"
         )
-    
+
     # ========================================================================
     # Cleanup
     # ========================================================================

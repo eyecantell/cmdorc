@@ -359,9 +359,7 @@ class TestIntegrationWithExecutor:
 
     async def test_multiple_independent_runs(self):
         """Multiple independent runs with their own handles should all complete."""
-        results = [
-            RunResult(command_name="test", run_id=f"run-{i}") for i in range(3)
-        ]
+        results = [RunResult(command_name="test", run_id=f"run-{i}") for i in range(3)]
         handles = [RunHandle(r) for r in results]
         tasks = [h.wait() for h in handles]
 
@@ -370,7 +368,7 @@ class TestIntegrationWithExecutor:
         for r in results:
             r.mark_success()
 
-        completed = await asyncio.gather(*tasks)
+        await asyncio.gather(*tasks)
         assert all(r.state == RunState.SUCCESS for r in results)
 
 
