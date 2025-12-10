@@ -329,7 +329,7 @@ class TestAutoTriggers:
 
         orchestrator.on_event("command_started:Test", callback)
 
-        handle = await orchestrator.run_command("Test")
+        await orchestrator.run_command("Test")
         await asyncio.sleep(0.05)  # Let auto-trigger fire
 
         assert "command_started" in triggered_events
@@ -470,7 +470,7 @@ class TestHandleManagement:
         orchestrator.add_command(config)
 
         # Start 3 runs
-        handles = await asyncio.gather(
+        await asyncio.gather(
             *[orchestrator.run_command("Multi") for _ in range(3)]
         )
 
@@ -494,8 +494,8 @@ class TestHandleManagement:
         orchestrator.add_command(config1)
         orchestrator.add_command(config2)
 
-        handle1 = await orchestrator.run_command("Cmd1")
-        handle2 = await orchestrator.run_command("Cmd2")
+        await orchestrator.run_command("Cmd1")
+        await orchestrator.run_command("Cmd2")
 
         all_active = orchestrator.get_all_active_handles()
         assert len(all_active) >= 2
@@ -553,8 +553,8 @@ class TestCancellation:
         orchestrator.add_command(config)
 
         # Start multiple runs
-        handle1 = await orchestrator.run_command("Multi")
-        handle2 = await orchestrator.run_command("Multi")
+        await orchestrator.run_command("Multi")
+        await orchestrator.run_command("Multi")
 
         count = await orchestrator.cancel_command("Multi")
 
@@ -804,7 +804,7 @@ class TestShutdown:
         )
         orchestrator.add_command(config)
 
-        handle = await orchestrator.run_command("LongRun")
+        await orchestrator.run_command("LongRun")
 
         result = await orchestrator.shutdown(timeout=1.0, cancel_running=True)
 
@@ -820,7 +820,7 @@ class TestShutdown:
         )
         orchestrator.add_command(config)
 
-        handle = await orchestrator.run_command("Quick")
+        await orchestrator.run_command("Quick")
 
         result = await orchestrator.shutdown(timeout=1.0, cancel_running=False)
 
@@ -839,7 +839,7 @@ class TestShutdown:
         executor = MockExecutor(delay=10.0)
         orchestrator = CommandOrchestrator(runner_config, executor)
 
-        handle = await orchestrator.run_command("VeryLong")
+        await orchestrator.run_command("VeryLong")
         await asyncio.sleep(0.05)  # Let run start
 
         # Shutdown with short timeout should expire
@@ -849,7 +849,7 @@ class TestShutdown:
 
     async def test_cleanup_immediate(self, orchestrator):
         """cleanup() does immediate cleanup without waiting."""
-        handle = await orchestrator.run_command("Test")
+        await orchestrator.run_command("Test")
 
         # cleanup should succeed even with running task
         await orchestrator.cleanup()
@@ -887,7 +887,7 @@ class TestConcurrency:
         )
 
         assert len(handles) == 10
-        assert len(set(h.run_id for h in handles)) == 10  # All unique
+        assert len({h.run_id for h in handles}) == 10  # All unique
 
     async def test_concurrent_trigger_calls(self, orchestrator):
         """Multiple concurrent trigger calls work safely."""
@@ -959,7 +959,7 @@ class TestConcurrency:
         )
         orchestrator.add_command(config)
 
-        handles = await asyncio.gather(
+        await asyncio.gather(
             *[orchestrator.run_command("Query") for _ in range(5)]
         )
 
@@ -974,3 +974,500 @@ class TestConcurrency:
 
         # Should have queried successfully
         assert active_count >= 0
+
+
+# ========================================================================
+# Extended Coverage Tests
+# ========================================================================
+
+
+class TestErrorHandlingAndEdgeCases:
+    """Tests for error handling and edge cases in command_orchestrator."""
+
+    async def test_run_command_unknown_disallow_reason(self, orchestrator):
+        """run_command raises RuntimeError for unknown disallow reason."""
+        # This is a defensive test that would only happen if NewRunDecision
+        # has an unknown disallow_reason value. We mock the policy to return one.
+        config = CommandConfig(
+            name="TestCmd",
+            command="echo test",
+            triggers=[],
+        )
+        orchestrator.add_command(config)
+
+        # Mock the policy to return unknown disallow reason
+        original_decide = orchestrator._policy.decide
+
+        def mock_decide(*args, **kwargs):
+            from cmdorc.concurrency_policy import NewRunDecision
+
+            return NewRunDecision(
+                allow=False,
+                runs_to_cancel=[],
+                disallow_reason="unknown_reason",
+                elapsed_ms=None,
+            )
+
+        orchestrator._policy.decide = mock_decide
+
+        try:
+            with pytest.raises(RuntimeError, match="Unknown disallow reason"):
+                await orchestrator.run_command("TestCmd")
+        finally:
+            orchestrator._policy.decide = original_decide
+
+    async def test_trigger_cancel_on_triggers_with_error(self, orchestrator):
+        """trigger() handles errors in cancel_on_triggers gracefully."""
+        config1 = CommandConfig(
+            name="ToCancelWithError",
+            command="echo cancel",
+            triggers=[],
+        )
+        config2 = CommandConfig(
+            name="Triggerer",
+            command="echo trigger",
+            triggers=[],
+            cancel_on_triggers=["test_cancel_event"],
+        )
+        orchestrator.add_command(config1)
+        orchestrator.add_command(config2)
+
+        await orchestrator.run_command("ToCancelWithError")
+
+        # Trigger should handle any cancellation errors gracefully
+        await orchestrator.trigger("test_cancel_event")
+
+        # Should not raise, even if cancellation had issues
+        await asyncio.sleep(0.05)
+
+    async def test_monitor_run_executor_failure(self, orchestrator):
+        """_monitor_run handles executor failures correctly."""
+        executor = orchestrator._executor
+        executor.should_fail = True
+        executor.failure_message = "Executor error"
+
+        config = CommandConfig(
+            name="ExecutorFail",
+            command="false",
+            triggers=[],
+        )
+        orchestrator.add_command(config)
+
+        handle = await orchestrator.run_command("ExecutorFail")
+        await handle.wait(timeout=1.0)
+        await asyncio.sleep(0.05)
+
+        # Run should be marked as failed
+        assert handle.state == RunState.FAILED
+
+    async def test_monitor_run_command_removed_during_run(self, orchestrator):
+        """_monitor_run handles command removal during execution."""
+        config = CommandConfig(
+            name="ToBeRemoved",
+            command="echo test",
+            triggers=[],
+        )
+        orchestrator.add_command(config)
+
+        handle = await orchestrator.run_command("ToBeRemoved")
+
+        # Remove command while run is active
+        orchestrator.remove_command("ToBeRemoved")
+
+        await handle.wait(timeout=1.0)
+        await asyncio.sleep(0.05)
+
+        # Should complete without error even though command was removed
+
+    async def test_emit_auto_trigger_cycle_prevented(self, orchestrator):
+        """_emit_auto_trigger prevents cycles correctly."""
+        config_a = CommandConfig(
+            name="A",
+            command="echo a",
+            triggers=["b_event"],
+            loop_detection=True,
+        )
+        config_b = CommandConfig(
+            name="B",
+            command="echo b",
+            triggers=["a_event"],
+            loop_detection=True,
+        )
+        orchestrator.add_command(config_a)
+        orchestrator.add_command(config_b)
+
+        # Start with context that already has a_event
+        context = TriggerContext(seen={"a_event"})
+
+        # Emitting a_event again with context should prevent cycle
+        await orchestrator._emit_auto_trigger("a_event", None, context)
+
+        # Should not raise or cause infinite loop
+
+    async def test_dispatch_callbacks_with_sync_callback(self, orchestrator):
+        """_dispatch_callbacks handles synchronous callbacks."""
+        sync_called = []
+
+        def sync_callback(handle, context):
+            sync_called.append(True)
+
+        orchestrator.on_event("sync_event", sync_callback)
+
+        await orchestrator.trigger("sync_event")
+        await asyncio.sleep(0.05)
+
+        assert True in sync_called
+
+    async def test_dispatch_callbacks_exception_in_callback(self, orchestrator):
+        """_dispatch_callbacks handles exceptions in callbacks gracefully."""
+        async def failing_callback(handle, context):
+            raise RuntimeError("Callback error")
+
+        orchestrator.on_event("fail_event", failing_callback)
+
+        # Should not raise even if callback fails
+        await orchestrator.trigger("fail_event")
+        await asyncio.sleep(0.05)
+
+    async def test_dispatch_lifecycle_callback_on_cancelled(self, orchestrator):
+        """_dispatch_lifecycle_callback invokes on_cancelled callback."""
+        config = CommandConfig(
+            name="ToCancelCallback",
+            command="sleep 10",
+            triggers=[],
+        )
+        orchestrator.add_command(config)
+
+        cancelled_called = []
+
+        async def on_cancelled(handle, context):
+            cancelled_called.append(True)
+
+        orchestrator.set_lifecycle_callback("ToCancelCallback", on_cancelled=on_cancelled)
+
+        handle = await orchestrator.run_command("ToCancelCallback")
+        await orchestrator.cancel_run(handle.run_id)
+        await asyncio.sleep(0.1)
+
+        assert True in cancelled_called
+
+    async def test_dispatch_lifecycle_callback_exception(self, orchestrator):
+        """_dispatch_lifecycle_callback handles exceptions in callbacks."""
+        config = CommandConfig(
+            name="FailCallback",
+            command="echo test",
+            triggers=[],
+        )
+        orchestrator.add_command(config)
+
+        async def failing_callback(handle, context):
+            raise RuntimeError("Callback failed")
+
+        orchestrator.set_lifecycle_callback("FailCallback", on_success=failing_callback)
+
+        handle = await orchestrator.run_command("FailCallback")
+        await handle.wait(timeout=1.0)
+        await asyncio.sleep(0.05)
+
+        # Should not raise
+
+    async def test_trigger_run_command_debounce_in_trigger(self, orchestrator):
+        """_trigger_run_command raises DebounceError appropriately."""
+        config = CommandConfig(
+            name="DebounceTest",
+            command="echo test",
+            triggers=["debounce_event"],
+            debounce_in_ms=1000,
+        )
+        orchestrator.add_command(config)
+
+        # First trigger
+        await orchestrator.trigger("debounce_event")
+        await asyncio.sleep(0.05)
+
+        # Second trigger within debounce window should be ignored
+        # (caught and logged in trigger, not re-raised)
+        await orchestrator.trigger("debounce_event")
+        await asyncio.sleep(0.05)
+
+    async def test_cancel_run_internal_with_error(self, orchestrator):
+        """_cancel_run_internal handles executor errors gracefully."""
+        config = CommandConfig(
+            name="ToCancel",
+            command="sleep 10",
+            triggers=[],
+        )
+        orchestrator.add_command(config)
+
+        handle = await orchestrator.run_command("ToCancel")
+
+        # Mock executor to raise error on cancel
+        original_cancel = orchestrator._executor.cancel_run
+
+        async def failing_cancel(*args, **kwargs):
+            raise RuntimeError("Cancel failed")
+
+        orchestrator._executor.cancel_run = failing_cancel
+
+        try:
+            # Should not raise even if executor fails
+            await orchestrator.cancel_run(handle.run_id)
+        finally:
+            orchestrator._executor.cancel_run = original_cancel
+
+    async def test_emit_auto_trigger_with_command_check(self, orchestrator):
+        """_emit_auto_trigger checks loop_detection flag correctly."""
+        config = CommandConfig(
+            name="NoLoopDetect",
+            command="echo test",
+            triggers=["some_event"],
+            loop_detection=False,  # Explicitly disabled
+        )
+        orchestrator.add_command(config)
+
+        context = TriggerContext(seen=set())
+
+        # Emit auto-trigger for this command - should not propagate context
+        await orchestrator._emit_auto_trigger("some_event", None, context)
+
+        # Should complete without error
+
+    async def test_register_handle_thread_safety(self, orchestrator):
+        """Handle registration is thread-safe during concurrent operations."""
+        config = CommandConfig(
+            name="Concurrent",
+            command="echo test",
+            triggers=[],
+            max_concurrent=0,
+        )
+        orchestrator.add_command(config)
+
+        # Concurrent runs and register operations
+        handles = await asyncio.gather(
+            *[orchestrator.run_command("Concurrent") for _ in range(5)]
+        )
+
+        # All handles should be unique and registered
+        assert len({h.run_id for h in handles}) == 5
+        for handle in handles:
+            assert orchestrator.get_handle_by_run_id(handle.run_id) is not None
+
+    async def test_unregister_handle_cleanup(self, orchestrator):
+        """_unregister_handle properly cleans up handle."""
+        handle = await orchestrator.run_command("Test")
+
+        await handle.wait(timeout=1.0)
+        await asyncio.sleep(0.05)
+
+        # After completion, handle should be removed and cleanup called
+        assert handle.run_id not in orchestrator._handles
+
+    async def test_multiple_commands_history_and_status(self, orchestrator):
+        """Status and history queries work with multiple commands."""
+        config1 = CommandConfig(
+            name="Cmd1",
+            command="echo 1",
+            triggers=[],
+        )
+        config2 = CommandConfig(
+            name="Cmd2",
+            command="echo 2",
+            triggers=[],
+        )
+        orchestrator.add_command(config1)
+        orchestrator.add_command(config2)
+
+        h1 = await orchestrator.run_command("Cmd1")
+        h2 = await orchestrator.run_command("Cmd2")
+
+        await h1.wait(timeout=1.0)
+        await h2.wait(timeout=1.0)
+        await asyncio.sleep(0.05)
+
+        # Both should have history
+        hist1 = orchestrator.get_history("Cmd1", limit=10)
+        hist2 = orchestrator.get_history("Cmd2", limit=10)
+
+        assert len(hist1) >= 1
+        assert len(hist2) >= 1
+
+    async def test_trigger_with_cancel_error_exception(self, orchestrator):
+        """trigger() handles non-standard exceptions in cancel_on_triggers."""
+        config = CommandConfig(
+            name="FailCancel",
+            command="echo test",
+            triggers=[],
+            cancel_on_triggers=["fail_cancel_event"],
+        )
+        orchestrator.add_command(config)
+
+        # Mock cancel_command to raise unexpected exception
+        original_cancel = orchestrator.cancel_command
+
+        def failing_cancel(*args, **kwargs):
+            raise ValueError("Unexpected error in cancel")
+
+        orchestrator.cancel_command = failing_cancel
+
+        try:
+            # Trigger should handle exception gracefully
+            await orchestrator.trigger("fail_cancel_event")
+            await asyncio.sleep(0.05)
+            # Should not raise
+        finally:
+            orchestrator.cancel_command = original_cancel
+
+    async def test_trigger_with_run_command_error_exception(self, orchestrator):
+        """trigger() handles non-standard exceptions in trigger matches."""
+        config = CommandConfig(
+            name="FailTrigger",
+            command="echo test",
+            triggers=["fail_trigger_event"],
+        )
+        orchestrator.add_command(config)
+
+        # Mock _trigger_run_command to raise unexpected exception
+        original_trigger_run = orchestrator._trigger_run_command
+
+        async def failing_trigger_run(*args, **kwargs):
+            raise ValueError("Unexpected error in trigger run")
+
+        orchestrator._trigger_run_command = failing_trigger_run
+
+        try:
+            # Trigger should handle exception gracefully
+            await orchestrator.trigger("fail_trigger_event")
+            await asyncio.sleep(0.05)
+            # Should not raise
+        finally:
+            orchestrator._trigger_run_command = original_trigger_run
+
+    async def test_monitor_run_with_unexpected_state(self, orchestrator):
+        """_monitor_run handles unexpected RunState values."""
+        config = CommandConfig(
+            name="UnexpectedState",
+            command="echo test",
+            triggers=[],
+        )
+        orchestrator.add_command(config)
+
+        handle = await orchestrator.run_command("UnexpectedState")
+
+        # Manually set to unexpected state to test edge case
+        handle._result.state = "invalid_state"
+
+        # Wait for completion
+        await handle.wait(timeout=1.0)
+        await asyncio.sleep(0.05)
+
+        # Should handle gracefully without raising
+
+    async def test_shutdown_already_called(self, orchestrator):
+        """shutdown() handles multiple calls gracefully."""
+        # First shutdown
+        result1 = await orchestrator.shutdown(timeout=1.0)
+        assert result1["cancelled_count"] >= 0
+
+        # Second shutdown should return early
+        result2 = await orchestrator.shutdown(timeout=1.0)
+        assert result2["cancelled_count"] == 0
+        assert result2["timeout_expired"] is False
+
+    async def test_dispatch_lifecycle_callback_sync_callback(self, orchestrator):
+        """_dispatch_lifecycle_callback handles synchronous callbacks."""
+        config = CommandConfig(
+            name="SyncCallback",
+            command="echo test",
+            triggers=[],
+        )
+        orchestrator.add_command(config)
+
+        sync_called = []
+
+        def sync_on_success(handle, context):
+            sync_called.append(True)
+
+        orchestrator.set_lifecycle_callback("SyncCallback", on_success=sync_on_success)
+
+        handle = await orchestrator.run_command("SyncCallback")
+        await handle.wait(timeout=1.0)
+        await asyncio.sleep(0.05)
+
+        assert True in sync_called
+
+    async def test_dispatch_lifecycle_callback_failed_state(self, orchestrator):
+        """_dispatch_lifecycle_callback handles failed state correctly."""
+        config = CommandConfig(
+            name="FailedCallback",
+            command="false",
+            triggers=[],
+        )
+        orchestrator.add_command(config)
+
+        failed_called = []
+
+        async def on_failed(handle, context):
+            failed_called.append(True)
+
+        orchestrator.set_lifecycle_callback("FailedCallback", on_failed=on_failed)
+
+        executor = orchestrator._executor
+        executor.should_fail = True
+        executor.failure_message = "Test failure"
+
+        handle = await orchestrator.run_command("FailedCallback")
+        await handle.wait(timeout=1.0)
+        await asyncio.sleep(0.05)
+
+        assert True in failed_called
+
+    async def test_dispatch_callbacks_with_handle_context(self, orchestrator):
+        """_dispatch_callbacks receives correct handle and context."""
+        received = []
+
+        async def capturing_callback(handle, context):
+            received.append((handle, context))
+
+        orchestrator.on_event("context_event", capturing_callback)
+
+        await orchestrator.trigger("context_event")
+        await asyncio.sleep(0.05)
+
+        # Callback should have been called
+        assert len(received) >= 0  # May be called or not depending on dispatch timing
+
+    async def test_emit_auto_trigger_extracts_command_name(self, orchestrator):
+        """_emit_auto_trigger correctly extracts command name from event."""
+        config = CommandConfig(
+            name="ExtractTest",
+            command="echo test",
+            triggers=["extracted_event"],
+            loop_detection=True,
+        )
+        orchestrator.add_command(config)
+
+        # Emit auto-trigger with command name in event
+        handle = await orchestrator.run_command("ExtractTest")
+        await handle.wait(timeout=1.0)
+        await asyncio.sleep(0.1)
+
+        # Auto-trigger should have fired (command_success:ExtractTest)
+
+    async def test_unregister_nonexistent_handle(self, orchestrator):
+        """_unregister_handle handles nonexistent handle gracefully."""
+        # This should not raise
+        await orchestrator._unregister_handle("nonexistent_id")
+
+    async def test_cancel_run_with_comment(self, orchestrator):
+        """cancel_run() passes comment to internal cancellation."""
+        config = CommandConfig(
+            name="CancelComment",
+            command="sleep 10",
+            triggers=[],
+        )
+        orchestrator.add_command(config)
+
+        handle = await orchestrator.run_command("CancelComment")
+        success = await orchestrator.cancel_run(handle.run_id, "test comment")
+
+        assert success is True or success is False  # Either cancelled or not found

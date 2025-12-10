@@ -1,3 +1,5 @@
+# cmdorc Architecture Reference
+
 **Version:** 0.1.0 (Refactored)  
 **Status:** Authoritative design document for implementation
 
@@ -133,20 +135,19 @@ handle.success: bool | None
 handle.output: str
 handle.error: str | Exception | None
 handle.duration_str: str
-handle.is_finalized: bool  
-handle.start_time: datetime.datetime | None  
-handle.end_time: datetime.datetime | None  
-handle.comment: str | None  
+handle.is_finalized: bool
+handle.start_time: datetime.datetime | None
+handle.end_time: datetime.datetime | None
+handle.comment: str | None
 
 await handle.wait(timeout: float | None = None) -> RunResult
-
-# Internal (advanced usage)
-handle._result: RunResult  # Direct access to underlying result
-
 handle.cleanup() -> None
 # Cancels the internal watcher task if still running.
 # Should be called when the handle is no longer needed (e.g. during orchestrator shutdown).
 # Idempotent and safe to call multiple times.
+
+# Internal (advanced usage)
+handle._result: RunResult  # Direct access to underlying result
 ```
 
 ---
@@ -373,6 +374,13 @@ Once Phase 1 resolves variables for a run, the snapshot is **frozen**:
    (cycle prevention via trigger_context.seen)
 ```
 
+### Monitoring (internal task)
+
+1. Await RunHandle.wait()
+2. Mark complete in runtime
+3. Emit lifecycle trigger (success/failed/cancelled)
+4. Dispatch lifecycle callback
+5. Unregister handle
 ---
 
 ## 7. Trigger System

@@ -528,7 +528,7 @@ class CommandOrchestrator:
         """
         callbacks = self._trigger_engine.get_matching_callbacks(event_name)
 
-        for callback, is_wildcard in callbacks:
+        for callback, _is_wildcard in callbacks:
             try:
                 if asyncio.iscoroutinefunction(callback):
                     await callback(handle, context)
