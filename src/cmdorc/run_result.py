@@ -5,7 +5,7 @@ import datetime
 import logging
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any
+from typing import Any, Callable
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +50,7 @@ class RunResult:
     Users interact with it via the public RunHandle façade.
 
     Note: This is mutable to allow state transitions during execution,
-    but should be treated as immutable once is_finished=True.
+    but should be treated as immutable once is_finalized=True.
     """
 
     # ------------------------------------------------------------------ #
@@ -99,6 +99,16 @@ class RunResult:
     """Comment or note about this run (for logging/debugging)."""
 
     # ------------------------------------------------------------------ #
+    # Internal callback for run finalization
+    # ------------------------------------------------------------------ #
+    _completion_callback: Callable[[], None] | None = field(
+        default=None, repr=False, compare=False
+    )
+
+    _is_finalized: bool = field(init=False, default=False)
+    """Internal flag set by _finalize()."""
+
+    # ------------------------------------------------------------------ #
     # State transitions
     # ------------------------------------------------------------------ #
     def mark_running(self, comment: str = None) -> None:
@@ -145,11 +155,16 @@ class RunResult:
     # ------------------------------------------------------------------ #
     def _finalize(self) -> None:
         """Record end time and compute duration."""
+        self._is_finalized = True
+
         self.end_time = datetime.datetime.now()
         if self.start_time:
             self.duration = self.end_time - self.start_time
         else:
             self.duration = datetime.timedelta(0)
+
+        if self._completion_callback:
+            self._completion_callback()
 
     # ------------------------------------------------------------------ #
     # Timing properties
@@ -160,7 +175,7 @@ class RunResult:
 
     @property
     def duration_str(self) -> str:
-        """Human-readable duration (e.g. '452ms', '2.4s', '1m 23s', '2h 5m')."""
+        """Human-readable duration (e.g. '452ms', '2.4s', '1m 23s', '2h 5m', '1d 3h')."""
         secs = self.duration_secs
         if secs is None:
             return "-"
@@ -172,12 +187,16 @@ class RunResult:
         if mins < 60:
             return f"{int(mins)}m {secs:.0f}s"
         hrs, mins = divmod(mins, 60)
-        return f"{int(hrs)}h {int(mins)}m"
+        if hrs < 24:
+            return f"{int(hrs)}h {int(mins)}m"
+        
+        days, hrs = divmod(hrs, 24)
+        return f"{int(days)}d {int(hrs)}h"
 
     @property
     def is_finalized(self) -> bool:
-        """Run is finished (not pending or running). Could be success, failed, or cancelled."""
-        return self.state not in {RunState.PENDING, RunState.RUNNING}
+        """Run is finished (not pending or running / _finalize has been called). Could be success, failed, or cancelled."""
+        return self._is_finalized
 
     # ------------------------------------------------------------------ #
     # Representation & serialization
@@ -203,3 +222,17 @@ class RunResult:
             "duration_str": self.duration_str,
             "resolved_command": self.resolved_command.to_dict() if self.resolved_command else None,
         }
+    
+
+    # ------------------------------------------------------------------ #  
+    # Internal callback for run finalization
+    # ------------------------------------------------------------------ #
+    
+    def _set_completion_callback(self, callback: Callable[[], None]) -> None:
+        """Internal: register a callback to be called once on finalization."""
+        if self._completion_callback is not None:
+            if self._completion_callback == callback:
+                return  # Idempotent for same callback
+            raise ValueError(f"Completion callback can only be set once. Old callback exists as {self._completion_callback}, cannot set new one as {callback}.")
+        
+        self._completion_callback = callback

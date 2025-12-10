@@ -9,11 +9,14 @@ Cancellation is handled by the orchestrator, not by RunHandle.
 """
 
 from __future__ import annotations
+import logging
 
 import asyncio
+from typing import Final
 
 from .run_result import RunResult, RunState
 
+logger = logging.getLogger(__name__)
 
 class RunHandle:
     """
@@ -32,6 +35,9 @@ class RunHandle:
     observes when the result becomes finalized.
     """
 
+    # Internal sentinel to detect if in sync context (no loop)
+    _NO_LOOP: Final = object()
+
     def __init__(self, result: RunResult) -> None:
         """
         Initialize a RunHandle for a RunResult.
@@ -40,38 +46,63 @@ class RunHandle:
             result: The RunResult to monitor
 
         Note:
-            The watcher task is created lazily on first wait() call if there's
-            no running event loop at init time. This allows RunHandle to be
-            created in non-async contexts.
+            The future and completion event are created lazily on first wait()
+            if there's no running event loop at init time. This allows RunHandle
+            to be created in non-async contexts (e.g., config loading).
         """
         self._result = result
+
+        # These are initialized lazily on first wait()
         self._future: asyncio.Future[RunResult] | None = None
+        self._completion_event: asyncio.Event | None = None
         self._watcher_task: asyncio.Task[None] | None = None
 
-        # If result is already finished, we can set it up immediately
-        # Otherwise we'll initialize the future on first wait()
-        if result.is_finalized:
-            self._future = asyncio.Future()
-            self._future.set_result(result)
+        # Try to get loop now — if none, defer all setup
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return  # Fully defer to wait()
+
+        # If in async context and not finalized, set up event early
+        if not result.is_finalized:
+            self._setup_completion_event()
+
+    def _setup_completion_event(self) -> None:
+        """Set up the Event and register callback on RunResult."""
+        if self._completion_event is not None:
+            return  # Already set up
+
+        self._completion_event = asyncio.Event()
+
+        # Register callback: when any mark_*() finalizes the result, trigger event
+        self._result._set_completion_callback(self._completion_event.set)
+
+        # In case finalization happened between check and now
+        if self._result.is_finalized:
+            self._completion_event.set()
 
     async def _watch_completion(self) -> None:
         """
-        Background task that monitors result completion.
+        Background task: wait on the completion event and resolve the future.
 
-        Polls result.is_finalized every 0.05 seconds and completes the future
-        when the run finishes. Handles cancellation gracefully.
+        This replaces polling with an efficient event-driven wait.
+        The event is set by RunResult when any of:
+          mark_success(), mark_failed(), mark_cancelled()
+        are called (via _finalize() → callback).
         """
         try:
-            # Poll with 0.05s interval (balance responsiveness vs CPU)
-            while not self._result.is_finalized:
-                await asyncio.sleep(0.05)
+            # Ensure event exists (in case wait() raced with finalization)
+            if self._completion_event is None:
+                self._setup_completion_event()
 
-            # Complete the future
-            if not self._future.done():
+            assert self._completion_event is not None
+            await self._completion_event.wait()
+
+            # Resolve future if not already done
+            if self._future and not self._future.done():
                 self._future.set_result(self._result)
         except asyncio.CancelledError:
-            # Handle cancellation gracefully
-            if not self._future.done():
+            if self._future and not self._future.done():
                 self._future.cancel()
             raise
 
@@ -89,13 +120,19 @@ class RunHandle:
         Raises:
             asyncio.TimeoutError: If timeout expires before completion
         """
-        # Initialize future and watcher on first wait() if not yet done
+        # Lazy initialization: set up future, event, and watcher on first call
         if self._future is None:
-            self._future = asyncio.Future()
-            if not self._result.is_finalized:
-                self._watcher_task = asyncio.create_task(self._watch_completion())
-            else:
+            loop = asyncio.get_running_loop()
+            self._future = loop.create_future()
+
+            if self._result.is_finalized:
+                # Already done — resolve immediately
                 self._future.set_result(self._result)
+            else:
+                # Set up event + watcher
+                if self._completion_event is None:
+                    self._setup_completion_event()
+                self._watcher_task = loop.create_task(self._watch_completion())
 
         if timeout is not None:
             return await asyncio.wait_for(self._future, timeout)
@@ -196,3 +233,12 @@ class RunHandle:
             f"RunHandle(command_name={self.command_name!r}, "
             f"run_id={self.run_id!r}, state={self.state.name})"
         )
+    
+    # ========================================================================
+    # Cleanup
+    # ========================================================================
+    def cleanup(self) -> None:
+        """Cancel the watcher task if active."""
+        if self._watcher_task and not self._watcher_task.done():
+            logger.debug(f"Cleanup cancelling watcher task for RunHandle {self}")
+            self._watcher_task.cancel()
