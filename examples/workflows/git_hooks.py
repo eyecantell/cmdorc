@@ -15,6 +15,7 @@ Use cases:
 Try it:
     python examples/workflows/git_hooks.py
 """
+# ruff: noqa: T201
 
 import asyncio
 
@@ -78,7 +79,7 @@ async def main():
     async def on_failure(handle, context):
         """Log failures and suggest actions."""
         print(f"  ✗ {handle.command_name} failed")
-        print(f"    Action: Check your code and try again")
+        print("    Action: Check your code and try again")
 
     async def on_cancel(handle, context):
         """Log cancellations."""
@@ -117,11 +118,7 @@ async def main():
         if status.state != "never_run":
             symbol = "✓" if status.state == "success" else "✗"
             print(f"  {symbol} {cmd_name}: {status.state}")
-
-    # Step 8: Wait before shutdown
-    await asyncio.sleep(0.1)
-
-    # Step 9: Clean up
+    # Step Clean up
     await orchestrator.shutdown()
     print("\n✅ Git workflows complete")
 

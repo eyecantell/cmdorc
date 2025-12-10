@@ -11,6 +11,7 @@ This example demonstrates:
 Try it:
     python examples/basic/05_status_and_history.py
 """
+# ruff: noqa: T201
 
 import asyncio
 
@@ -99,11 +100,7 @@ async def main():
     print("All Active Handles (across all commands):")
     all_active = orchestrator.get_all_active_handles()
     print(f"  Total: {len(all_active)}")
-
-    # Step 10: Wait before shutdown
-    await asyncio.sleep(0.1)
-
-    # Step 11: Clean up
+    # Step Clean up
     await orchestrator.shutdown()
     print("\nShutdown complete.")
 

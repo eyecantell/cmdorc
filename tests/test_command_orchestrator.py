@@ -16,6 +16,7 @@ Test categories:
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime, timedelta
 
 import pytest
 
@@ -148,6 +149,45 @@ class TestExecutionFlow:
         with pytest.raises(DebounceError):
             await orchestrator.run_command("Debounced")
 
+    async def test_run_command_debounce_error_with_elapsed(self, orchestrator):
+        """run_command raises DebounceError with elapsed_ms when debounced."""
+        config = CommandConfig(
+            name="DebounceTest",
+            command="echo",
+            triggers=[],
+            debounce_in_ms=1000,
+        )
+        orchestrator.add_command(config)
+
+        # Simulate recent start
+        orchestrator._runtime._last_start["DebounceTest"] = datetime.now() - timedelta(milliseconds=400)
+
+        with pytest.raises(DebounceError) as exc:
+            await orchestrator.run_command("DebounceTest")
+        assert exc.value.elapsed_ms < 1000  # Verify timing context
+        assert "debounce window" in str(exc.value)
+
+    async def test_run_command_concurrency_limit_reason(self, orchestrator):
+        """Policy denial includes correct disallow_reason."""
+        config = CommandConfig(
+            name="LimitTest",
+            command="echo",
+            triggers=[],
+            max_concurrent=1,
+            on_retrigger="ignore",
+        )
+        orchestrator.add_command(config)
+
+        # Start one run
+        handle1 = await orchestrator.run_command("LimitTest")
+        # Don't wait, keep active
+
+        with pytest.raises(ConcurrencyLimitError):
+            await orchestrator.run_command("LimitTest")
+
+        # Cleanup
+        await handle1.wait()
+
     async def test_run_command_concurrency_limit_error(self):
         """run_command raises ConcurrencyLimitError when max_concurrent exceeded."""
         # Create orchestrator with slow executor to ensure first run doesn't complete
@@ -272,6 +312,17 @@ class TestTriggerFlow:
         # Trying to trigger event_a again should raise TriggerCycleError
         with pytest.raises(TriggerCycleError):
             await orchestrator.trigger("event_a", context)
+
+    async def test_cycle_with_loop_detection_false(self, orchestrator):
+        """Cycle allowed if loop_detection=False."""
+        a = CommandConfig(name="A", command="echo", triggers=["B"], loop_detection=False)
+        b = CommandConfig(name="B", command="echo", triggers=["A"])
+        orchestrator.add_command(a)
+        orchestrator.add_command(b)
+
+        # Should not raise (A loop_detection=False allows)
+        await orchestrator.trigger("A")
+        await asyncio.sleep(0.1)  # Allow chain
 
     async def test_trigger_during_shutdown_raises_error(self, orchestrator):
         """trigger() raises OrchestratorShutdownError during shutdown."""
@@ -624,6 +675,20 @@ class TestConfiguration:
         status = orchestrator.get_status("ToUpdate")
         assert status is not None
 
+    async def test_update_command_mid_run(self, orchestrator):
+        """Active runs continue with old config after update."""
+        old_config = CommandConfig(name="UpdateMid", command="echo old", triggers=[])
+        orchestrator.add_command(old_config)
+
+        handle = await orchestrator.run_command("UpdateMid")
+
+        # Update config mid-run
+        new_config = CommandConfig(name="UpdateMid", command="echo new", triggers=[])
+        orchestrator.update_command(new_config)
+
+        await handle.wait()
+        assert "old" in handle.output  # Used old config
+
     def test_reload_all_commands(self, orchestrator):
         """reload_all_commands() clears and reloads all commands."""
         # Orchestrator already has Test command
@@ -780,6 +845,15 @@ class TestCallbacks:
         assert len(failed_called) == 0
 
 
+    async def test_callback_exception_manual_propagates(self, orchestrator):
+        """Manual callback exceptions propagate."""
+        def failing_callback(handle, context):
+            raise ValueError("Test fail")
+
+        orchestrator.on_event("manual_event", failing_callback)
+
+        with pytest.raises(ValueError):
+            await orchestrator.trigger("manual_event")  # Manual → raises
 # ========================================================================
 # Shutdown Tests
 # ========================================================================
@@ -855,6 +929,51 @@ class TestShutdown:
 
         with pytest.raises(OrchestratorShutdownError):
             await orchestrator.run_command("Test")
+
+
+    async def test_shutdown_during_auto_trigger(self, orchestrator):
+        """Shutdown during auto-trigger emit doesn't crash (error caught)."""
+        config = CommandConfig(
+            name="ShutdownAuto",
+            command="echo",
+            triggers=[],
+        )
+        orchestrator.add_command(config)
+
+        handle = await orchestrator.run_command("ShutdownAuto")
+
+        # Start shutdown while run is active (will wait)
+        shutdown_task = asyncio.create_task(orchestrator.shutdown(timeout=1.0, cancel_running=False))
+
+        # Wait for run to complete → emits auto-trigger → should catch OrchestratorShutdownError if races
+        await handle.wait()
+        await asyncio.sleep(0.1)  # Allow emit
+
+        result = await shutdown_task
+        assert not result["timeout_expired"]
+
+    # New in Shutdown: Exceptions in gather counted correctly
+    async def test_shutdown_with_exceptions_in_gather(self, orchestrator):
+        """Shutdown counts successes accurately even with exceptions in wait."""
+        # Mock executor to raise in one wait (simulate error)
+        class FailingMock(MockExecutor):
+            async def start_run(self, result, resolved):
+                if "Fail" in result.command_name:
+                    raise RuntimeError("Test fail")
+                await super().start_run(result, resolved)
+
+        config = RunnerConfig(commands=[
+            CommandConfig(name="Success", command="echo", triggers=[]),
+            CommandConfig(name="Fail", command="echo", triggers=[]),
+        ], vars={})
+        orch = CommandOrchestrator(config, FailingMock(delay=0.01))
+
+        await orch.run_command("Success")
+        await orch.run_command("Fail")
+
+        result = await orch.shutdown(timeout=1.0, cancel_running=False)
+        assert result["completed_count"] == 1  # Only success completes normally
+        assert result["cancelled_count"] == 0
 
 
 # ========================================================================

@@ -24,6 +24,7 @@ Try it:
     python examples/workflows/python_project/dev_workflow.py lint
     python examples/workflows/python_project/dev_workflow.py test
 """
+# ruff: noqa: T201
 
 import argparse
 import asyncio
@@ -140,11 +141,7 @@ async def main():
         if status.state != "never_run":
             symbol = "✓" if status.state == "success" else "✗"
             print(f"  {symbol} {cmd_name}: {status.state}")
-
-    # Step 9: Wait before shutdown
-    await asyncio.sleep(0.1)
-
-    # Step 10: Clean up
+    # Step Clean up
     await orchestrator.shutdown()
 
 

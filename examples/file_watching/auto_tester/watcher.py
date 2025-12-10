@@ -13,6 +13,7 @@ Requirements:
 Try it:
     python examples/file_watching/auto_tester/watcher.py
 """
+# ruff: noqa: T201
 
 import asyncio
 from pathlib import Path
@@ -74,7 +75,7 @@ async def main():
 
     async def on_test_failure(handle, context):
         """Called when tests fail."""
-        print(f"  ✗ Tests failed - fix the issues and save to retry")
+        print("  ✗ Tests failed - fix the issues and save to retry")
 
     orchestrator.on_event("command_success:RunTests", on_test_success)
     orchestrator.on_event("command_failed:RunTests", on_test_failure)

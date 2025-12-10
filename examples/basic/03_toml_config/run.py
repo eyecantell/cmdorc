@@ -12,6 +12,7 @@ The config.toml file in this directory defines the commands.
 Try it:
     python examples/basic/03_toml_config/run.py
 """
+# ruff: noqa: T201
 
 import asyncio
 from pathlib import Path
@@ -60,11 +61,7 @@ async def main():
     for command_name in commands:
         status = orchestrator.get_status(command_name)
         print(f"  {command_name}: {status.state}")
-
-    # Step 9: Wait before shutdown
-    await asyncio.sleep(0.1)
-
-    # Step 10: Clean up
+    # Step Clean up
     await orchestrator.shutdown()
     print("\nShutdown complete.")
 

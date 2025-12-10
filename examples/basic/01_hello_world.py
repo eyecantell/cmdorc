@@ -9,6 +9,7 @@ This is the simplest possible cmdorc example. It demonstrates:
 Try it:
     python examples/basic/01_hello_world.py
 """
+# ruff: noqa: T201
 
 import asyncio
 
@@ -46,11 +47,7 @@ async def main():
     if handle.output:
         print(f"Output: {handle.output}")
 
-    # Step 6: Wait for any pending tasks to complete before shutdown
-    # This gives auto-triggers time to finish
-    await asyncio.sleep(0.1)
-
-    # Step 7: Clean up
+    # Step 6: Clean up
     # Always shutdown the orchestrator to release resources
     await orchestrator.shutdown()
 

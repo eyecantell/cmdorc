@@ -10,9 +10,9 @@ This example demonstrates:
 Try it:
     python examples/advanced/04_custom_executor.py
 """
+# ruff: noqa: T201
 
 import asyncio
-from typing import Any
 
 from cmdorc import (
     CommandConfig,
@@ -20,8 +20,8 @@ from cmdorc import (
     CommandOrchestrator,
     LocalSubprocessExecutor,
     ResolvedCommand,
-    RunResult,
     RunnerConfig,
+    RunResult,
 )
 
 
@@ -126,11 +126,7 @@ async def main():
     print("\nExecution Log:")
     for entry in logging_executor.get_log():
         print(f"  {entry}")
-
-    # Step 6: Wait before shutdown
-    await asyncio.sleep(0.1)
-
-    # Step 7: Clean up
+    # Step Clean up
     await orchestrator.shutdown()
     print("\n✅ Custom executor demonstration complete")
 

@@ -17,6 +17,7 @@ Variable priority (highest to lowest):
 Try it:
     python examples/basic/04_runtime_variables.py
 """
+# ruff: noqa: T201
 
 import asyncio
 import os
@@ -98,11 +99,7 @@ async def main():
     )
     await handle4.wait(timeout=5.0)
     print()
-
-    # Step 7: Wait before shutdown
-    await asyncio.sleep(0.1)
-
-    # Step 8: Clean up
+    # Step Clean up
     await orchestrator.shutdown()
 
 

@@ -16,6 +16,7 @@ Workflow:
 Try it:
     python examples/workflows/ci_pipeline/ci_runner.py
 """
+# ruff: noqa: T201
 
 import asyncio
 from pathlib import Path
@@ -40,7 +41,7 @@ async def main():
     # In a real CI system, you might send alerts or create tickets
     def on_pipeline_failure(handle, context):
         """Called when any critical stage fails."""
-        print(f"\n⚠️  Pipeline failure notification triggered")
+        print("\n⚠️  Pipeline failure notification triggered")
 
     orchestrator.on_event("command_failed:*", on_pipeline_failure)
 
@@ -110,11 +111,7 @@ async def main():
     else:
         print("❌ Pipeline failed - check stages above")
     print("=" * 50)
-
-    # Step 9: Wait before shutdown
-    await asyncio.sleep(0.1)
-
-    # Step 10: Clean up
+    # Step Clean up
     await orchestrator.shutdown(timeout=5.0, cancel_running=True)
 
 

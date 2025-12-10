@@ -81,6 +81,10 @@ triggers = ["command_started:Build"]      # show spinner when build starts
 cancel_on_triggers = ["command_started:Tests"]  # cancel this if Tests starts
 ```
 
+**See it in action:**
+- `examples/basic/02_simple_workflow.py` - Command chaining using lifecycle triggers
+- `examples/workflows/ci_pipeline/` - Complete CI/CD workflow with lifecycle events
+
 ## Triggering Commands
 
 - `runner.trigger("any_string")` → runs **every** command that lists `"any_string"` in its `triggers` (exact match only).
@@ -115,6 +119,8 @@ await runner.trigger("changes_applied")  # User trigger
 #     (NO command_finished)
 ```
 
+**See it in action:** `examples/basic/02_simple_workflow.py` shows this lifecycle flow with a real Lint → Test workflow using `command_success:Lint` to chain commands.
+
 ## Example Uses
 
 - **File/directory watching** → Implement in your host app (e.g., with watchdog), then `runner.trigger("file_modified:src/")`.
@@ -141,6 +147,8 @@ command = "echo B"
 ```
 
 The first time through works: `start → A → B`. But when B finishes, it would trigger A again, creating a cycle. cmdorc detects this and logs a warning instead of running infinitely.
+
+**See it in action:** `examples/advanced/05_cycle_detection.py` demonstrates cycle prevention and how `loop_detection` settings work.
 
 ## Summary
 

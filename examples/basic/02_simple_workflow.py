@@ -15,6 +15,7 @@ Workflow: Lint → Test
 Try it:
     python examples/basic/02_simple_workflow.py
 """
+# ruff: noqa: T201
 
 import asyncio
 
@@ -59,7 +60,7 @@ async def main():
     lint_status = orchestrator.get_status("Lint")
     test_status = orchestrator.get_status("Test")
 
-    print(f"\nWorkflow Results:")
+    print("\nWorkflow Results:")
     print(f"  Lint: {lint_status.state}")
     print(f"  Test: {test_status.state}")
 
@@ -67,14 +68,11 @@ async def main():
     lint_history = orchestrator.get_history("Lint", limit=5)
     test_history = orchestrator.get_history("Test", limit=5)
 
-    print(f"\nExecution History:")
+    print("\nExecution History:")
     print(f"  Lint ran {len(lint_history)} time(s)")
     print(f"  Test ran {len(test_history)} time(s)")
 
-    # Step 7: Wait before shutdown to let any pending tasks finish
-    await asyncio.sleep(0.1)
-
-    # Step 8: Clean up
+    # Step 7: Clean up
     await orchestrator.shutdown()
 
 

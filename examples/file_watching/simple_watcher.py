@@ -16,6 +16,7 @@ when Python files change.
 Try it:
     python examples/file_watching/simple_watcher.py
 """
+# ruff: noqa: T201
 
 import asyncio
 from pathlib import Path

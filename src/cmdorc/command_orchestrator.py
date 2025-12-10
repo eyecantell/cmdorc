@@ -499,6 +499,9 @@ class CommandOrchestrator:
         except TriggerCycleError as e:
             # Expected during cycle prevention
             logger.debug(f"Cycle prevented for {event_name}: {e}")
+        except OrchestratorShutdownError:
+            # Expected during shutdown - auto-triggers may fire after shutdown begins
+            logger.debug(f"Auto-trigger {event_name} skipped (orchestrator shutting down)")
         except Exception as e:
             # Auto-triggers should never crash the orchestrator
             logger.exception(f"Error in auto-trigger {event_name}: {e}")

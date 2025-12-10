@@ -17,6 +17,7 @@ Scenario:
 Try it:
     python examples/file_watching/hot_reload.py
 """
+# ruff: noqa: T201
 
 import asyncio
 from pathlib import Path
@@ -81,7 +82,7 @@ async def main():
 
     async def on_server_cancel(handle, context):
         """Server was restarted."""
-        print(f"  ⊘ Server stopped for restart")
+        print("  ⊘ Server stopped for restart")
 
     orchestrator.on_event("command_started:DevServer", on_server_start)
     orchestrator.on_event("command_cancelled:DevServer", on_server_cancel)

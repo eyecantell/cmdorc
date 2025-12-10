@@ -35,6 +35,8 @@ pip install cmdorc
 
 Requires Python 3.10+
 
+**Want to learn by example?** Check out the [examples/](examples/) directory for runnable demonstrations of all features - from basic usage to advanced patterns.
+
 ## Quick Start
 
 ### 1. Create `cmdorc.toml`
@@ -107,6 +109,8 @@ async def main():
 asyncio.run(main())
 ```
 
+**See it in action:** Run `examples/basic/01_hello_world.py` or `examples/basic/02_simple_workflow.py` to see a working example immediately.
+
 ## Core Concepts
 
 ### Triggers & Auto-Events
@@ -128,6 +132,8 @@ await orchestrator.trigger("build")
 # 2. ... subprocess runs ...
 # 3. command_success:Compile    ← triggers on success
 ```
+
+**Example:** See `examples/basic/02_simple_workflow.py` for a working workflow that chains Lint → Test using lifecycle triggers.
 
 ### Cancellation
 
@@ -185,6 +191,8 @@ Internal data container; use RunHandle for public interaction.
 orchestrator = CommandOrchestrator(load_config("cmdorc.toml"))
 ```
 
+**Example:** See `examples/basic/03_toml_config/` for a complete TOML-based workflow setup.
+
 ### Or Pass Programmatically
 
 ```python
@@ -200,6 +208,8 @@ commands = [
 
 orchestrator = CommandOrchestrator(commands)
 ```
+
+**Example:** See `examples/basic/01_hello_world.py` or `examples/basic/02_simple_workflow.py` for programmatic configuration patterns.
 
 ## Introspection (Great for UIs)
 
@@ -233,12 +243,34 @@ orchestrator.on_event("command_started:Tests", lambda handle, context: ui.show_s
 orchestrator.on_event("command_success:Tests", lambda handle, context: ui.hide_spinner())
 ```
 
+**Example:** See `examples/advanced/01_callbacks_and_hooks.py` for patterns including exact event matching, wildcard patterns, and lifecycle callbacks.
+
 ### Template Variables
 
 ```python
 orchestrator = CommandOrchestrator(config, vars={"env": "production", "region": "us-west-2"})
 # Now commands can use {{ env }} and {{ region }}
 ```
+
+**Example:** See `examples/basic/04_runtime_variables.py` for variable resolution and templating patterns.
+
+### Concurrency & Retrigger Policies
+
+Control how commands behave when triggered multiple times:
+- `max_concurrent` - Limit parallel executions (0 = unlimited)
+- `on_retrigger` - `cancel_and_restart` or `ignore`
+- `debounce_in_ms` - Delay re-runs by milliseconds
+
+**Example:** See `examples/advanced/03_concurrency_policies.py` for demonstrations of all concurrency control patterns.
+
+### Error Handling & Exceptions
+
+Handle failures gracefully with cmdorc-specific exceptions:
+- `CommandNotFoundError` - Command not in registry
+- `ConcurrencyLimitError` - Too many concurrent runs
+- `DebounceError` - Triggered too soon after last run
+
+**Example:** See `examples/advanced/02_error_handling.py` for comprehensive error handling patterns and recovery strategies.
 
 ### History Retention
 
@@ -251,6 +283,8 @@ history = orchestrator.get_history("Tests")
 for result in history:
     print(f"{result.run_id}: {result.state.value} in {result.duration_str}")
 ```
+
+**Example:** See `examples/basic/05_status_and_history.py` for status tracking and history introspection patterns.
 
 ---
 

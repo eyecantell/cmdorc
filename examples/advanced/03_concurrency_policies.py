@@ -10,10 +10,11 @@ This example demonstrates:
 Try it:
     python examples/advanced/03_concurrency_policies.py
 """
+# ruff: noqa: T201
 
 import asyncio
 
-from cmdorc import CommandConfig, CommandOrchestrator, RunnerConfig, ConcurrencyLimitError
+from cmdorc import CommandConfig, CommandOrchestrator, ConcurrencyLimitError, RunnerConfig
 
 
 async def main():
@@ -65,8 +66,8 @@ async def main():
         # Try second run - should fail
         h2 = await orchestrator.run_command("Single")
         print("   ✓ Second run started (unexpected!)")
-    except ConcurrencyLimitError as e:
-        print(f"   ✓ Second run rejected: limit exceeded\n")
+    except ConcurrencyLimitError:
+        print("   ✓ Second run rejected: limit exceeded\n")
 
     await h1.wait(timeout=5.0)
 
@@ -122,13 +123,9 @@ async def main():
         # Immediate retrigger - should fail
         h2 = await orchestrator.run_command("Debounced")
         print("   ✓ Second run started (unexpected!)")
-    except Exception as e:
-        print(f"   ✓ Second run blocked by debounce\n")
-
-    # Step 5: Wait before shutdown
-    await asyncio.sleep(0.1)
-
-    # Step 6: Clean up
+    except Exception:
+        print("   ✓ Second run blocked by debounce\n")
+    # Step Clean up
     await orchestrator.shutdown()
     print("✅ Concurrency policies demonstration complete")
 

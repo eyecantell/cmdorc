@@ -10,14 +10,15 @@ This example demonstrates:
 Try it:
     python examples/advanced/02_error_handling.py
 """
+# ruff: noqa: T201
 
 import asyncio
 
 from cmdorc import (
     CommandConfig,
     CommandNotFoundError,
-    ConcurrencyLimitError,
     CommandOrchestrator,
+    ConcurrencyLimitError,
     DebounceError,
     RunnerConfig,
 )
@@ -97,9 +98,9 @@ async def main():
         await handle.wait(timeout=2.0)
         print(f"   State: {handle.state}")
         if handle.state == "failed":
-            print(f"   ✓ Command timed out as expected")
+            print("   ✓ Command timed out as expected")
     except asyncio.TimeoutError:
-        print(f"   ✓ Wait timeout (command timed out)")
+        print("   ✓ Wait timeout (command timed out)")
 
     # Step 6: Exception in callbacks (handled gracefully)
     print("\n5. Callback Exception Handling:")
@@ -116,11 +117,7 @@ async def main():
         print("   ✓ Trigger succeeded despite callback exception")
     except Exception as e:
         print(f"   ✗ Unexpected: {e}")
-
-    # Step 7: Wait before shutdown
-    await asyncio.sleep(0.1)
-
-    # Step 8: Clean up
+    # Step Clean up
     await orchestrator.shutdown()
     print("\n✅ Error handling demonstration complete")
 

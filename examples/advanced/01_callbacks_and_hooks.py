@@ -10,6 +10,7 @@ This example demonstrates:
 Try it:
     python examples/advanced/01_callbacks_and_hooks.py
 """
+# ruff: noqa: T201
 
 import asyncio
 
@@ -101,11 +102,7 @@ async def main():
     print("\nTriggering manual event...")
     await orchestrator.trigger("build_complete")
     await asyncio.sleep(0.2)
-
-    # Step 8: Wait before shutdown
-    await asyncio.sleep(0.1)
-
-    # Step 9: Clean up
+    # Step Clean up
     await orchestrator.shutdown()
     print("\n✅ Callbacks demonstration complete")
 
