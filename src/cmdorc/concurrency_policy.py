@@ -69,7 +69,12 @@ class ConcurrencyPolicy:
                 logger.debug(
                     f"Policy for '{config.name}': debounced ({elapsed_ms:.0f}ms < {config.debounce_in_ms}ms)"
                 )
-                return NewRunDecision(allow=False, disallow_reason="debounce", elapsed_ms=elapsed_ms, runs_to_cancel=[])
+                return NewRunDecision(
+                    allow=False,
+                    disallow_reason="debounce",
+                    elapsed_ms=elapsed_ms,
+                    runs_to_cancel=[],
+                )
 
         active_count = len(active_runs)
 
@@ -95,7 +100,9 @@ class ConcurrencyPolicy:
                 f"Policy for '{config.name}': at limit ({active_count}/{config.max_concurrent}), "
                 f"ignoring new trigger"
             )
-            return NewRunDecision(allow=False, disallow_reason="concurrency_limit", runs_to_cancel=[])
+            return NewRunDecision(
+                allow=False, disallow_reason="concurrency_limit", runs_to_cancel=[]
+            )
         elif config.on_retrigger == "cancel_and_restart":
             logger.debug(
                 f"Policy for '{config.name}': at limit ({active_count}/{config.max_concurrent}), "

@@ -17,6 +17,7 @@ class NewRunDecision:
       (only used when on_retrigger="cancel_and_restart")
     - elapsed_ms: Time elapsed since last execution in milliseconds, if applicable (debounce in use).
     """
+
     allow: bool
     disallow_reason: Literal["debounce", "concurrency_limit"] | None = None
     """Reason for disallowing the new run. None when allow=True."""

@@ -209,9 +209,7 @@ class TestExecutionFlow:
         orchestrator.add_command(config)
 
         # Start 5 concurrent runs
-        handles = await asyncio.gather(
-            *[orchestrator.run_command("Concurrent") for _ in range(5)]
-        )
+        handles = await asyncio.gather(*[orchestrator.run_command("Concurrent") for _ in range(5)])
 
         assert len(handles) == 5
         assert all(h.run_id != handles[0].run_id for h in handles[1:])
@@ -299,12 +297,9 @@ class TestTriggerFlow:
     async def test_trigger_multiple_concurrent(self, multi_command_orchestrator):
         """Multiple concurrent trigger() calls work correctly."""
         # Launch multiple concurrent triggers
-        await asyncio.gather(
-            *[
-                multi_command_orchestrator.trigger("changes_applied")
-                for _ in range(3)
-            ]
-        )
+        await asyncio.gather(*[
+            multi_command_orchestrator.trigger("changes_applied") for _ in range(3)
+        ])
 
         # All should complete without error
         # Lint should have multiple active runs if allowed
@@ -470,9 +465,7 @@ class TestHandleManagement:
         orchestrator.add_command(config)
 
         # Start 3 runs
-        await asyncio.gather(
-            *[orchestrator.run_command("Multi") for _ in range(3)]
-        )
+        await asyncio.gather(*[orchestrator.run_command("Multi") for _ in range(3)])
 
         active = orchestrator.get_active_handles("Multi")
         assert len(active) >= 1  # At least one should be active
@@ -882,9 +875,7 @@ class TestConcurrency:
         )
         orchestrator.add_command(config)
 
-        handles = await asyncio.gather(
-            *[orchestrator.run_command("Concurrent") for _ in range(10)]
-        )
+        handles = await asyncio.gather(*[orchestrator.run_command("Concurrent") for _ in range(10)])
 
         assert len(handles) == 10
         assert len({h.run_id for h in handles}) == 10  # All unique
@@ -900,9 +891,7 @@ class TestConcurrency:
         orchestrator.add_command(config)
 
         # Multiple concurrent triggers
-        await asyncio.gather(
-            *[orchestrator.trigger("test_event") for _ in range(5)]
-        )
+        await asyncio.gather(*[orchestrator.trigger("test_event") for _ in range(5)])
 
         # All should complete without errors
 
@@ -917,14 +906,10 @@ class TestConcurrency:
         orchestrator.add_command(config)
 
         # Start multiple runs
-        handles = await asyncio.gather(
-            *[orchestrator.run_command("ToCancel") for _ in range(5)]
-        )
+        handles = await asyncio.gather(*[orchestrator.run_command("ToCancel") for _ in range(5)])
 
         # Concurrent cancellations
-        results = await asyncio.gather(
-            *[orchestrator.cancel_run(h.run_id) for h in handles]
-        )
+        results = await asyncio.gather(*[orchestrator.cancel_run(h.run_id) for h in handles])
 
         assert sum(results) >= 1  # At least one succeeded
 
@@ -959,9 +944,7 @@ class TestConcurrency:
         )
         orchestrator.add_command(config)
 
-        await asyncio.gather(
-            *[orchestrator.run_command("Query") for _ in range(5)]
-        )
+        await asyncio.gather(*[orchestrator.run_command("Query") for _ in range(5)])
 
         # Query while runs are completing
         async def query_active():
@@ -1120,6 +1103,7 @@ class TestErrorHandlingAndEdgeCases:
 
     async def test_dispatch_callbacks_exception_in_callback(self, orchestrator):
         """_dispatch_callbacks handles exceptions in callbacks gracefully."""
+
         async def failing_callback(handle, context):
             raise RuntimeError("Callback error")
 
@@ -1243,9 +1227,7 @@ class TestErrorHandlingAndEdgeCases:
         orchestrator.add_command(config)
 
         # Concurrent runs and register operations
-        handles = await asyncio.gather(
-            *[orchestrator.run_command("Concurrent") for _ in range(5)]
-        )
+        handles = await asyncio.gather(*[orchestrator.run_command("Concurrent") for _ in range(5)])
 
         # All handles should be unique and registered
         assert len({h.run_id for h in handles}) == 5

@@ -93,9 +93,7 @@ class CommandOrchestrator:
         for config in runner_config.commands:
             self._runtime.register_command(config)
 
-        logger.debug(
-            f"Initialized CommandOrchestrator with {len(runner_config.commands)} commands"
-        )
+        logger.debug(f"Initialized CommandOrchestrator with {len(runner_config.commands)} commands")
 
     # ========================================================================
     # Execution: Manual
@@ -261,9 +259,7 @@ class CommandOrchestrator:
         )
         for config in cancel_matches:
             try:
-                await self.cancel_command(
-                    config.name, f"cancel_on_trigger:{event_name}"
-                )
+                await self.cancel_command(config.name, f"cancel_on_trigger:{event_name}")
             except Exception as e:
                 logger.exception(
                     f"Error cancelling command '{config.name}' for trigger '{event_name}': {e}"
@@ -271,9 +267,7 @@ class CommandOrchestrator:
                 continue
 
         # Handle triggers matches (execute matching commands)
-        trigger_matches = self._trigger_engine.get_matching_commands(
-            event_name, "triggers"
-        )
+        trigger_matches = self._trigger_engine.get_matching_commands(event_name, "triggers")
         for config in trigger_matches:
             try:
                 await self._trigger_run_command(config, event_name, context)
@@ -370,12 +364,9 @@ class CommandOrchestrator:
             # Policy denied - determine reason
             if config.debounce_in_ms > 0 and last_start_time is not None:
                 elapsed_ms = (
-                    asyncio.get_event_loop().time() * 1000
-                    - last_start_time.timestamp() * 1000
+                    asyncio.get_event_loop().time() * 1000 - last_start_time.timestamp() * 1000
                 )
-                raise DebounceError(
-                    config.name, config.debounce_in_ms, elapsed_ms
-                )
+                raise DebounceError(config.name, config.debounce_in_ms, elapsed_ms)
             else:
                 raise ConcurrencyLimitError(
                     f"Command '{config.name}' at limit from trigger '{event_name}'"
@@ -537,9 +528,7 @@ class CommandOrchestrator:
             except Exception as e:
                 # Note: For manual triggers, caller can catch. For auto-triggers,
                 # exceptions are already caught in _emit_auto_trigger
-                logger.exception(
-                    f"Error in callback for event '{event_name}': {e}"
-                )
+                logger.exception(f"Error in callback for event '{event_name}': {e}")
 
     async def _dispatch_lifecycle_callback(
         self,
@@ -908,9 +897,7 @@ class CommandOrchestrator:
             on_failed: Callback for failed completion
             on_cancelled: Callback for cancellation
         """
-        self._trigger_engine.set_lifecycle_callback(
-            name, on_success, on_failed, on_cancelled
-        )
+        self._trigger_engine.set_lifecycle_callback(name, on_success, on_failed, on_cancelled)
         logger.debug(f"Set lifecycle callbacks for command '{name}'")
 
     # ========================================================================
@@ -971,8 +958,7 @@ class CommandOrchestrator:
                 timeout_expired = True
                 remaining = len(self.get_all_active_handles())
                 logger.warning(
-                    f"Shutdown timeout after {timeout}s, "
-                    f"{remaining} handles still active"
+                    f"Shutdown timeout after {timeout}s, {remaining} handles still active"
                 )
         else:
             timeout_expired = False
