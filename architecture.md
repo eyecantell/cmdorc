@@ -133,11 +133,20 @@ handle.success: bool | None
 handle.output: str
 handle.error: str | Exception | None
 handle.duration_str: str
+handle.is_finalized: bool  
+handle.start_time: datetime.datetime | None  
+handle.end_time: datetime.datetime | None  
+handle.comment: str | None  
 
 await handle.wait(timeout: float | None = None) -> RunResult
 
 # Internal (advanced usage)
 handle._result: RunResult  # Direct access to underlying result
+
+handle.cleanup() -> None
+# Cancels the internal watcher task if still running.
+# Should be called when the handle is no longer needed (e.g. during orchestrator shutdown).
+# Idempotent and safe to call multiple times.
 ```
 
 ---
@@ -938,9 +947,9 @@ class MockExecutor(CommandExecutor):
   - [ ] Dispatch with ordering guarantee
   - [ ] Cycle prevention
 - [x] `RunHandle` facade
-  - [x] Properties (command_name, run_id, state, success, output, error, duration_str, is_finalized, start_time, end_time, comment)
+  - [x] Properties (command_name, run_id, state, success, output, error, duration_str, is_finalized, start_time, end_time, comment) 
   - [x] `wait()` with optional timeout
-  - [x] Internal monitoring task (is_finalized polling at 0.05s)
+  - [x] Internal monitoring task (event-driven via asyncio.Event) 
 
 ### Phase 5: Orchestrator
 - [ ] `CommandOrchestrator`
@@ -1035,6 +1044,14 @@ class MockExecutor(CommandExecutor):
 
 ### For CommandOrchestrator Implementation
 
+**1. Resource Cleanup**
+```python
+def cleanup(self) -> None:
+    """Cancel the RunHandle watcher tasks if active. Idempotent."""
+```
+- **Priority:** Should have before 1.0
+- **Rationale:** Prevents lingering asyncio tasks when orchestrator shuts down or handles are garbage collected after long-lived runs.
+
 **1. Convenience Cancellation Method**
 ```python
 async def cancel_command(name: str, comment: str | None = None) -> int:
@@ -1065,19 +1082,6 @@ async def shutdown(timeout: float = 30.0, cancel_running: bool = True) -> dict
 - **Priority:** Must have for production
 - **Rationale:** Prevents orphaned subprocesses, clean lifecycle management
 
-### For RunHandle Implementation
-
-**1. Optimized wait() Implementation**
-
-Current planned approach uses polling (`asyncio.sleep(0.01)`). Consider alternatives:
-- Increase poll interval to 0.05s to reduce CPU usage
-- Alternative: Event-based notification where executor calls `handle._notify_completion()`
-
-**Trade-offs:**
-- Polling: Simple, works universally, slight CPU overhead
-- Event-based: More complex, eliminates overhead, requires executor integration
-
-**Recommendation:** Start with polling (0.05s interval), optimize later if needed.
 
 ### Optional Enhancements (Post 1.0)
 
