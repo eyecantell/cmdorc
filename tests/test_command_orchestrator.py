@@ -687,7 +687,9 @@ class TestConfiguration:
         orchestrator.update_command(new_config)
 
         await handle.wait()
-        assert "old" in handle.output  # Used old config
+        # Verify the run captured the old command in resolved_command
+        assert handle._result.resolved_command is not None
+        assert handle._result.resolved_command.command == "echo old"
 
     def test_reload_all_commands(self, orchestrator):
         """reload_all_commands() clears and reloads all commands."""
@@ -969,7 +971,10 @@ class TestShutdown:
         orch = CommandOrchestrator(config, FailingMock(delay=0.01))
 
         await orch.run_command("Success")
-        await orch.run_command("Fail")
+
+        # Second run raises exception in executor.start_run()
+        with pytest.raises(RuntimeError):
+            await orch.run_command("Fail")
 
         result = await orch.shutdown(timeout=1.0, cancel_running=False)
         assert result["completed_count"] == 1  # Only success completes normally
@@ -1221,16 +1226,16 @@ class TestErrorHandlingAndEdgeCases:
         assert True in sync_called
 
     async def test_dispatch_callbacks_exception_in_callback(self, orchestrator):
-        """_dispatch_callbacks handles exceptions in callbacks gracefully."""
+        """_dispatch_callbacks propagates exceptions from manual triggers."""
 
         async def failing_callback(handle, context):
             raise RuntimeError("Callback error")
 
         orchestrator.on_event("fail_event", failing_callback)
 
-        # Should not raise even if callback fails
-        await orchestrator.trigger("fail_event")
-        await asyncio.sleep(0.05)
+        # Callback exceptions propagate from manual triggers
+        with pytest.raises(RuntimeError):
+            await orchestrator.trigger("fail_event")
 
     async def test_dispatch_lifecycle_callback_on_cancelled(self, orchestrator):
         """_dispatch_lifecycle_callback invokes on_cancelled callback."""

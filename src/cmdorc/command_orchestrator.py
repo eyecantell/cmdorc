@@ -186,7 +186,14 @@ class CommandOrchestrator:
         asyncio.create_task(self._emit_auto_trigger(f"command_started:{name}", handle))
 
         # Start executor (non-blocking)
-        await self._executor.start_run(result, resolved)
+        try:
+            await self._executor.start_run(result, resolved)
+        except Exception as e:
+            # If executor.start_run() fails, mark as failed and unregister
+            result.mark_failed(str(e))
+            self._runtime.mark_run_complete(result)
+            await self._unregister_handle(result.run_id)
+            raise
 
         # Start monitoring task
         asyncio.create_task(self._monitor_run(result, handle))
@@ -383,7 +390,14 @@ class CommandOrchestrator:
             self._handles[result.run_id] = handle
 
         # Start executor
-        await self._executor.start_run(result, resolved)
+        try:
+            await self._executor.start_run(result, resolved)
+        except Exception as e:
+            # If executor.start_run() fails, mark as failed and unregister
+            result.mark_failed(str(e))
+            self._runtime.mark_run_complete(result)
+            await self._unregister_handle(result.run_id)
+            raise
 
         # Monitor with context propagation
         asyncio.create_task(self._monitor_run(result, handle, context))
@@ -532,6 +546,7 @@ class CommandOrchestrator:
                 # Note: For manual triggers, caller can catch. For auto-triggers,
                 # exceptions are already caught in _emit_auto_trigger
                 logger.exception(f"Error in callback for event '{event_name}': {e}")
+                raise
 
     async def _dispatch_lifecycle_callback(
         self,
