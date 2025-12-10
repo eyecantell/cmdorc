@@ -280,10 +280,8 @@ tests/
 - Concurrency Policy
 - Executor System (ABC + LocalSubprocessExecutor + MockExecutor)
 - Data Containers
+- TriggerEngine (pattern matching, callbacks, cycle detection)
+- RunHandle (public facade with async wait support)
+- CommandOrchestrator (main coordinator with full lifecycle management)
 
-**In Progress:**
-- TriggerEngine (pattern matching, callbacks)
-- RunHandle (public facade)
-- CommandOrchestrator (main coordinator)
-
-**Total:** ~2,500 lines production code, ~1,500 lines test code
+**Total:** ~3,000+ lines production code, ~5,300+ lines test code, 343 tests

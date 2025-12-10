@@ -789,9 +789,11 @@ async def _dispatch_callback(callback, handle, context):
 ### Executor Error Handling
 
 **start_run() failures:**
-- Executor catches exceptions during launch
-- Calls `result.mark_failed(exception)`
-- Orchestrator sees completed result with `state=FAILED`
+- If executor.start_run() raises an exception, orchestrator catches it
+- Marks the run as failed with the exception message
+- Marks run complete in runtime
+- Unregisters the handle to prevent orphaned state
+- Re-raises the exception so caller can handle it
 
 **cancel_run() safety:**
 - Must be idempotent
@@ -800,10 +802,10 @@ async def _dispatch_callback(callback, handle, context):
 
 ### Exception Hierarchy
 
-**Status:** ⚠️ **Planned but not yet implemented**
+**Status:** ✅ **Implemented in `src/cmdorc/exceptions.py`**
 
 ```python
-# exceptions.py (to be created)
+# exceptions.py
 
 class CmdorcError(Exception):
     """Base exception for all cmdorc errors."""
@@ -839,16 +841,40 @@ class TriggerCycleError(CmdorcError):
     def __init__(self, event_name: str, cycle_path: list[str]):
         self.event_name = event_name
         self.cycle_path = cycle_path
+        cycle_display = " -> ".join(cycle_path) + f" -> {event_name}"
+        super().__init__(f"Trigger cycle detected: {cycle_display}")
+
+class ConcurrencyLimitError(CmdorcError):
+    """Raised when concurrency policy denies command execution."""
+
+    def __init__(
+        self,
+        command_name: str,
+        active_count: int,
+        max_concurrent: int,
+        policy: str = "ignore",
+    ):
+        self.command_name = command_name
+        self.active_count = active_count
+        self.max_concurrent = max_concurrent
+        self.policy = policy
         super().__init__(
-            f"Trigger cycle detected for '{event_name}': {' -> '.join(cycle_path)}"
+            f"Command '{command_name}' cannot start: "
+            f"{active_count}/{max_concurrent} active, on_retrigger={policy}"
         )
+
+class OrchestratorShutdownError(CmdorcError):
+    """Raised when operation is rejected during orchestrator shutdown."""
+    pass
 ```
 
 **Usage:**
-- `CommandConfig.__post_init__` should raise `ConfigValidationError` instead of generic `ValueError`
-- `CommandRuntime.verify_registered()` should raise `CommandNotFoundError` instead of generic `KeyError`
-- `CommandOrchestrator` debounce check (line 470) should raise `DebounceError` with context
-- `TriggerEngine` should raise `TriggerCycleError` when cycles detected
+- `CommandConfig.__post_init__` raises `ConfigValidationError` for validation failures
+- `CommandRuntime.get_command()` raises `CommandNotFoundError` if command not registered
+- `run_command()` raises `DebounceError` if in debounce window
+- `run_command()` raises `ConcurrencyLimitError` if policy denies execution
+- `TriggerEngine` raises `TriggerCycleError` when cycles detected
+- `run_command()` and `trigger()` raise `OrchestratorShutdownError` during shutdown
 
 **Benefits:**
 - Enables specific exception handling by users
