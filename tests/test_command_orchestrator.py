@@ -160,7 +160,9 @@ class TestExecutionFlow:
         orchestrator.add_command(config)
 
         # Simulate recent start
-        orchestrator._runtime._last_start["DebounceTest"] = datetime.now() - timedelta(milliseconds=400)
+        orchestrator._runtime._last_start["DebounceTest"] = datetime.now() - timedelta(
+            milliseconds=400
+        )
 
         with pytest.raises(DebounceError) as exc:
             await orchestrator.run_command("DebounceTest")
@@ -846,9 +848,9 @@ class TestCallbacks:
         assert True in success_called
         assert len(failed_called) == 0
 
-
     async def test_callback_exception_manual_propagates(self, orchestrator):
         """Manual callback exceptions propagate."""
+
         def failing_callback(handle, context):
             raise ValueError("Test fail")
 
@@ -856,6 +858,8 @@ class TestCallbacks:
 
         with pytest.raises(ValueError):
             await orchestrator.trigger("manual_event")  # Manual → raises
+
+
 # ========================================================================
 # Shutdown Tests
 # ========================================================================
@@ -932,7 +936,6 @@ class TestShutdown:
         with pytest.raises(OrchestratorShutdownError):
             await orchestrator.run_command("Test")
 
-
     async def test_shutdown_during_auto_trigger(self, orchestrator):
         """Shutdown during auto-trigger emit doesn't crash (error caught)."""
         config = CommandConfig(
@@ -945,7 +948,9 @@ class TestShutdown:
         handle = await orchestrator.run_command("ShutdownAuto")
 
         # Start shutdown while run is active (will wait)
-        shutdown_task = asyncio.create_task(orchestrator.shutdown(timeout=1.0, cancel_running=False))
+        shutdown_task = asyncio.create_task(
+            orchestrator.shutdown(timeout=1.0, cancel_running=False)
+        )
 
         # Wait for run to complete → emits auto-trigger → should catch OrchestratorShutdownError if races
         await handle.wait()
@@ -957,6 +962,7 @@ class TestShutdown:
     # New in Shutdown: Exceptions in gather counted correctly
     async def test_shutdown_with_exceptions_in_gather(self, orchestrator):
         """Shutdown counts successes accurately even with exceptions in wait."""
+
         # Mock executor to raise in one wait (simulate error)
         class FailingMock(MockExecutor):
             async def start_run(self, result, resolved):
@@ -964,10 +970,13 @@ class TestShutdown:
                     raise RuntimeError("Test fail")
                 await super().start_run(result, resolved)
 
-        config = RunnerConfig(commands=[
-            CommandConfig(name="Success", command="echo", triggers=[]),
-            CommandConfig(name="Fail", command="echo", triggers=[]),
-        ], vars={})
+        config = RunnerConfig(
+            commands=[
+                CommandConfig(name="Success", command="echo", triggers=[]),
+                CommandConfig(name="Fail", command="echo", triggers=[]),
+            ],
+            vars={},
+        )
         orch = CommandOrchestrator(config, FailingMock(delay=0.01))
 
         await orch.run_command("Success")

@@ -36,9 +36,7 @@ async def main():
     """Run Python development workflow."""
 
     # Step 1: Parse command line arguments
-    parser = argparse.ArgumentParser(
-        description="Python project development workflow"
-    )
+    parser = argparse.ArgumentParser(description="Python project development workflow")
     parser.add_argument(
         "command",
         nargs="?",
