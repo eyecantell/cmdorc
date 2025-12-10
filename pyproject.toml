@@ -61,7 +61,7 @@ requires = ["pdm-backend"]
 build-backend = "pdm.backend"
 
 [tool.pdm]
-source-includes = ["tests/", "src/cmdorc/"]
+source-includes = ["tests/", "src/cmdorc/", "CHANGELOG.md"]
 package-dir = "src"
 distribution = true
 
@@ -71,6 +71,21 @@ test = [
   "pytest-asyncio>=0.23",
   "pytest-cov>=5.0",
   "ruff>=0.6.0",
+]
+
+[tool.pdm.build]
+includes = [
+    "CHANGELOG.md",
+    "src/cmdorc/py.typed",
+]
+excludes = [
+    "**/.coverage",
+    "**/__pycache__",
+    "**/*.pyc",
+    "**/.pytest_cache",
+    ".claude/",
+    "htmlcov/",
+    ".ruff_cache/",
 ]
 
 [tool.ruff]

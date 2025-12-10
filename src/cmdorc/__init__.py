@@ -1,3 +1,5 @@
+__version__ = "0.1.0"
+
 from .command_config import CommandConfig, RunnerConfig
 from .command_executor import CommandExecutor
 from .command_orchestrator import CommandOrchestrator
@@ -22,6 +24,8 @@ from .trigger_engine import TriggerEngine
 from .types import CommandStatus, NewRunDecision, TriggerContext
 
 __all__ = [
+    # Version
+    "__version__",
     # Core Components
     "CommandConfig",
     "CommandOrchestrator",

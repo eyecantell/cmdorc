@@ -1,8 +1,12 @@
 # cmdorc: Command Orchestrator - Async, Trigger-Driven Shell Command Runner
 
-[![PyPI version](https://badge.fury.io/py/cmdorc.svg)](https://badge.fury.io/py/cmdorc)  
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)  
+[![PyPI version](https://badge.fury.io/py/cmdorc.svg)](https://badge.fury.io/py/cmdorc)
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Tests](https://img.shields.io/badge/tests-343%20passing-brightgreen)](https://github.com/eyecantell/cmdorc/tree/main/tests)
+[![Coverage](https://img.shields.io/badge/coverage-94%25-brightgreen)](https://github.com/eyecantell/cmdorc)
+[![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
+[![Typing: PEP 561](https://img.shields.io/badge/typing-PEP%20561-blue)](https://peps.python.org/pep-0561/)
 
 **cmdorc** is a lightweight, **async-first** Python library for running shell commands in response to string-based **triggers**. Built for developer tools, TUIs (like [VibeDir](https://github.com/yourusername/vibedir)), CI automation, or any app needing event-driven command orchestration.
 
@@ -286,9 +290,33 @@ for result in history:
 
 **Example:** See `examples/basic/05_status_and_history.py` for status tracking and history introspection patterns.
 
+## Testing & Quality
+
+cmdorc maintains high quality standards:
+- **343 tests** with 94% code coverage
+- Full async/await testing with `pytest-asyncio`
+- Type hints throughout with PEP 561 compliance
+- Linted with ruff for consistent style
+
+Run tests locally:
+```bash
+pdm run pytest                          # Run all tests
+pdm run pytest --cov=cmdorc            # With coverage
+ruff check . && ruff format .           # Lint and format
+```
+
+## Contributing
+
+Contributions welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for:
+- Development setup
+- Running tests locally
+- Code style guidelines
+- Pull request process
+
+## License
+
+MIT License - See [LICENSE](LICENSE) for details
+
 ---
 
-**Contributions welcome!**  
-See [CONTRIBUTING.md](CONTRIBUTING.md)
-
-**License**: MIT
+**Made with ❤️ for async Python developers**
