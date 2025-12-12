@@ -1,5 +1,5 @@
 {
-    "name": "vibedir dev env",
+    "name": "cmdorc dev env",
     "build": {
         "dockerfile": "Dockerfile",
         "context": ".."
@@ -17,7 +17,7 @@
             "consistency": "cached"
         }
     ],
-    "postCreateCommand": "cd /mounted/dev/vibedir && pdm install -G test -G dev",
+    "postCreateCommand": "cd /mounted/dev/cmdorc && pdm install -G test -G dev",
     "customizations": {
         "vscode": {
             "extensions": [
