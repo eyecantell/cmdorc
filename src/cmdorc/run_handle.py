@@ -210,6 +210,23 @@ class RunHandle:
         """Optional comment (e.g., cancellation reason)."""
         return self._result.comment
 
+    @property
+    def trigger_chain(self) -> list[str]:
+        """
+        Ordered list of trigger events that led to this run.
+
+        Returns a copy to prevent external mutations.
+
+        Examples:
+          - [] = manually started via run_command()
+          - ["user_saves"] = triggered directly by user_saves event
+          - ["user_saves", "command_success:Lint"] = chained trigger
+
+        Returns:
+            Copy of the trigger chain
+        """
+        return self._result.trigger_chain.copy()
+
     # ========================================================================
     # Internal Access (Advanced Usage)
     # ========================================================================
@@ -230,9 +247,11 @@ class RunHandle:
 
     def __repr__(self) -> str:
         """Return a helpful debug representation of the handle."""
+        chain_display = " -> ".join(self.trigger_chain) if self.trigger_chain else "manual"
         return (
             f"RunHandle(command_name={self.command_name!r}, "
-            f"run_id={self.run_id!r}, state={self.state.name})"
+            f"run_id={self.run_id!r}, state={self.state.name}, "
+            f"chain={chain_display!r})"
         )
 
     # ========================================================================

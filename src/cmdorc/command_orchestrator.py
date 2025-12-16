@@ -243,22 +243,23 @@ class CommandOrchestrator:
         if self._is_shutdown:
             raise OrchestratorShutdownError("Orchestrator is shutting down")
 
-        # Acquire orchestrator lock for critical section (context.seen)
+        # Acquire orchestrator lock for critical section (context.seen and context.history)
         async with self._orchestrator_lock:
             # Create or use provided context
             if context is None:
-                context = TriggerContext(seen=set())
+                context = TriggerContext(seen=set(), history=[])
 
             # Check cycle detection
             if not self._trigger_engine.check_cycle(event_name, context):
-                raise TriggerCycleError(event_name, list(context.seen))
+                raise TriggerCycleError(event_name, context.history)
 
-            # Add event to context.seen immediately (cycle prevention)
+            # Add event to context.seen immediately (cycle prevention) and context.history (breadcrumb)
             context.seen.add(event_name)
+            context.history.append(event_name)
 
         # Release lock before executing commands/callbacks
 
-        logger.debug(f"Trigger: {event_name} (context.seen={context.seen})")
+        logger.debug(f"Trigger: {event_name} (chain: {' -> '.join(context.history)})")
 
         # Handle cancel_on_triggers matches
         cancel_matches = self._trigger_engine.get_matching_commands(
@@ -301,6 +302,7 @@ class CommandOrchestrator:
         config: CommandConfig,
         call_time_vars: dict[str, str] | None,
         trigger_event: str | None,
+        trigger_chain: list[str] | None = None,
     ) -> tuple[ResolvedCommand, RunResult]:
         """
         Prepare resolved command and result container.
@@ -313,6 +315,7 @@ class CommandOrchestrator:
             config: CommandConfig to prepare
             call_time_vars: Optional call-time variable overrides
             trigger_event: Optional trigger event that started this run
+            trigger_chain: Optional full trigger chain leading to this run
 
         Returns:
             Tuple of (ResolvedCommand, RunResult)
@@ -329,6 +332,7 @@ class CommandOrchestrator:
         result = RunResult(
             command_name=config.name,
             trigger_event=trigger_event,
+            trigger_chain=trigger_chain.copy() if trigger_chain else [],
             resolved_command=resolved,
         )
 
@@ -359,8 +363,8 @@ class CommandOrchestrator:
             DebounceError: If command in debounce window
             ConcurrencyLimitError: If policy denies run
         """
-        # Prepare run
-        resolved, result = self._prepare_run(config, None, event_name)
+        # Prepare run with trigger chain
+        resolved, result = self._prepare_run(config, None, event_name, trigger_chain=context.history.copy())
 
         # Apply policy (includes debounce check)
         active_runs = self._runtime.get_active_runs(config.name)
@@ -497,6 +501,14 @@ class CommandOrchestrator:
             context: Optional TriggerContext for cycle prevention
         """
         try:
+            # If no context provided but we have a handle, inherit parent's trigger chain
+            if context is None and handle is not None:
+                parent_chain = handle._result.trigger_chain
+                context = TriggerContext(
+                    seen=set(parent_chain),
+                    history=parent_chain.copy()
+                )
+
             # Check if we should track in context
             if context is not None:
                 # Extract command name from event (e.g., "command_success:Tests" -> "Tests")

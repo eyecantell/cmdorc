@@ -103,7 +103,8 @@ class TriggerCycleError(CmdorcError):
 
     Attributes:
         event_name: The event that would create the cycle
-        cycle_path: List of events in the cycle chain
+        cycle_path: Ordered list of events in the trigger chain
+        cycle_point: Index where the cycle begins (where event_name appears in cycle_path)
     """
 
     def __init__(self, event_name: str, cycle_path: list[str]):
@@ -112,12 +113,32 @@ class TriggerCycleError(CmdorcError):
 
         Args:
             event_name: Event that triggered the cycle detection
-            cycle_path: Ordered list of events forming the cycle
+            cycle_path: Ordered list of events in the trigger chain (breadcrumb trail)
         """
         self.event_name = event_name
         self.cycle_path = cycle_path
-        cycle_display = " -> ".join(cycle_path) + f" -> {event_name}"
-        super().__init__(f"Trigger cycle detected: {cycle_display}")
+
+        # Find where cycle begins
+        try:
+            self.cycle_point = cycle_path.index(event_name)
+        except ValueError:
+            self.cycle_point = None
+
+        # Build detailed error message
+        if self.cycle_point is not None:
+            pre_cycle = cycle_path[:self.cycle_point]
+            cycle = cycle_path[self.cycle_point:]
+
+            msg_parts = []
+            if pre_cycle:
+                msg_parts.append(f"Trigger chain: {' -> '.join(pre_cycle)}")
+            msg_parts.append(f"Cycle: {' -> '.join(cycle)} -> {event_name}")
+            message = "\n".join(msg_parts)
+        else:
+            full_chain = " -> ".join(cycle_path) + f" -> {event_name}"
+            message = f"Trigger cycle detected: {full_chain}"
+
+        super().__init__(message)
 
 
 class ConcurrencyLimitError(CmdorcError):

@@ -42,9 +42,17 @@ class TriggerContext:
 
     Each top-level trigger() call gets a fresh TriggerContext.
     If an event name is already in seen, the engine aborts that branch.
+
+    Attributes:
+        seen: Set of event names already processed in this trigger chain (for O(1) cycle detection).
+        history: Ordered list of event names in this trigger chain (for breadcrumb display).
     """
 
     seen: set[str] = field(default_factory=set)
+    """Events already processed in this trigger chain (for O(1) cycle detection)."""
+
+    history: list[str] = field(default_factory=list)
+    """Ordered list of events in this trigger chain (for breadcrumb display)."""
 
 
 @dataclass(frozen=True)

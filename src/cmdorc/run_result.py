@@ -66,6 +66,18 @@ class RunResult:
     trigger_event: str | None = None
     """Event that triggered this run (e.g. "file_saved", "Tests")."""
 
+    trigger_chain: list[str] = field(default_factory=list)
+    """Ordered list of trigger events leading to this run.
+
+    Examples:
+      - [] = manually started via run_command()
+      - ["user_saves"] = triggered directly by user_saves event
+      - ["user_saves", "command_success:Lint"] = chained trigger
+
+    The last element matches trigger_event (if trigger_event is not None).
+    Immutable after finalization (treat as read-only).
+    """
+
     # ------------------------------------------------------------------ #
     # Execution output & result
     # ------------------------------------------------------------------ #
@@ -201,9 +213,11 @@ class RunResult:
     # Representation & serialization
     # ------------------------------------------------------------------ #
     def __repr__(self) -> str:
+        chain_display = "->".join(self.trigger_chain) if self.trigger_chain else "manual"
         return (
             f"RunResult(id={self.run_id[:8]}, cmd='{self.command_name}', "
-            f"state={self.state.value}, dur={self.duration_str}, success={self.success})"
+            f"state={self.state.value}, dur={self.duration_str}, success={self.success}, "
+            f"chain={chain_display})"
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -212,6 +226,7 @@ class RunResult:
             "run_id": self.run_id,
             "command_name": self.command_name,
             "trigger_event": self.trigger_event,
+            "trigger_chain": self.trigger_chain.copy(),
             "output": self.output,
             "success": self.success,
             "error": str(self.error) if self.error else None,
