@@ -3,7 +3,7 @@
 [![PyPI version](https://badge.fury.io/py/cmdorc.svg)](https://badge.fury.io/py/cmdorc)
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Tests](https://img.shields.io/badge/tests-343%20passing-brightgreen)](https://github.com/eyecantell/cmdorc/tree/main/tests)
+[![Tests](https://img.shields.io/badge/tests-357%20passing-brightgreen)](https://github.com/eyecantell/cmdorc/tree/main/tests)
 [![Coverage](https://img.shields.io/badge/coverage-94%25-brightgreen)](https://github.com/eyecantell/cmdorc)
 [![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 [![Typing: PEP 561](https://img.shields.io/badge/typing-PEP%20561-blue)](https://peps.python.org/pep-0561/)
@@ -155,6 +155,33 @@ on_retrigger = "cancel_and_restart"  # default
 # or "ignore" to skip if already running
 debounce_in_ms = 500  # Throttle rapid triggers
 ```
+
+### Trigger Chains (Breadcrumbs)
+
+Every run tracks the sequence of triggers that led to its execution:
+
+```python
+# Manual run
+handle = await orchestrator.run_command("Tests")
+print(handle.trigger_chain)  # []
+
+# Triggered run
+await orchestrator.trigger("user_saves")  # → Lint → Tests
+handle = orchestrator.get_active_handles("Tests")[0]
+print(handle.trigger_chain)
+# ["user_saves", "command_started:Lint", "command_success:Lint"]
+```
+
+**Use cases:**
+- **Debugging:** "Why did this command run?"
+- **UI Display:** Show breadcrumb trail in status bar or logs
+- **Cycle Errors:** See the full path that caused a cycle
+
+**Access via:**
+- `RunHandle.trigger_chain` - Live runs
+- `RunResult.trigger_chain` - Historical runs (via `get_history()`)
+
+See `examples/advanced/04_trigger_chains.py` for a complete example.
 
 ## API Highlights
 

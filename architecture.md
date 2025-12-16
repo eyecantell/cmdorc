@@ -418,26 +418,56 @@ def matches(pattern: str, event_name: str) -> bool:
 
 ### TriggerContext & Cycle Prevention
 
-### TriggerContext & Cycle Prevention
-
 ```python
 @dataclass
 class TriggerContext:
     seen: set[str] = field(default_factory=set)
+    history: list[str] = field(default_factory=list)
 ```
 
-**Design choice:** Uses `set` for O(1) membership checking rather than `list` (O(n) checking).
-**Rationale:** Sets are significantly faster when checking if an item is contained within them, which is the primary operation for cycle detection.
-**Debugging:** If ordered history is needed for debugging, add separate `history: list[str]` field or rely on logging.
+**Design:** Dual-field approach optimizes for both performance and observability:
+- **`seen`:** Set for O(1) cycle detection via membership checking
+- **`history`:** Ordered list for breadcrumb tracking and debugging
+
+**Rationale:**
+- Sets are significantly faster for cycle detection (primary operation)
+- Lists provide ordered event history for troubleshooting and UI display
+- Both track same events, optimized for different use cases
 
 **Rules:**
 1. Fresh context created for each top-level `trigger()` call
 2. Before processing event, check if `event_name in context.seen`
-3. If already seen → log warning, abort this branch
-4. After processing → add to `context.seen` (unless `loop_detection=False`)
+3. If already seen → raise `TriggerCycleError` with full `history` breadcrumb
+4. After passing cycle check → add to both `context.seen` AND `context.history`
 
 **Escape Hatch:**
 If `CommandConfig.loop_detection = False`, that command's auto-triggers do NOT add to `seen`. Use with extreme caution.
+
+### Trigger Chain Tracking (Breadcrumbs)
+
+`TriggerContext` propagates through trigger chains, enabling complete breadcrumb tracking:
+
+```python
+# Top-level trigger
+context = TriggerContext(seen=set(), history=[])
+
+# Nested trigger (auto-trigger)
+child_context = TriggerContext(
+    seen=parent_context.seen.copy(),      # Inherit cycle detection
+    history=parent_context.history.copy()  # Inherit breadcrumb
+)
+```
+
+**Propagation flow:**
+1. `user_saves` trigger fires → `context.history = ["user_saves"]`
+2. Triggers `command_started:Lint` → `context.history = ["user_saves", "command_started:Lint"]`
+3. Triggers `command_success:Lint` → `context.history = ["user_saves", "command_started:Lint", "command_success:Lint"]`
+4. Each run stores snapshot: `RunResult.trigger_chain = context.history.copy()`
+
+**Access:**
+- `RunHandle.trigger_chain` - Live runs (returns copy to prevent mutations)
+- `RunResult.trigger_chain` - Historical runs (via `get_history()`)
+- `TriggerCycleError.cycle_path` - Full path when cycle detected
 
 ### Dispatch Order Guarantee
 
@@ -659,18 +689,19 @@ class RunResult:
     command_name: str
     run_id: str
     trigger_event: str | None
-    
+    trigger_chain: list[str]
+
     # Output
     output: str
     success: bool | None
     error: str | Exception | None
     state: RunState
-    
+
     # Timing
     start_time: datetime | None
     end_time: datetime | None
     duration: timedelta | None
-    
+
     # Snapshot
     resolved_command: ResolvedCommand | None
     # Comment (for cancellation reasons, notes, etc.)
@@ -686,6 +717,16 @@ class RunResult:
 3. **State transitions** - Only via `mark_running/success/failed/cancelled` methods
 4. **Immutable after finalization** - Once `_finalize()` called, no further mutations
 5. **Comment field** - Optional field for cancellation reasons, notes, debugging info (not the same as `error`)
+6. **trigger_chain field** - Immutable snapshot of trigger breadcrumb (set at creation, never modified)
+
+**Trigger Chain Details:**
+- **Populated at:** `RunResult` creation in `_prepare_run()` (copy of `context.history`)
+- **Immutable after:** Finalization (like all result data)
+- **For debugging:** Shows "why did this command run?" - full event sequence
+- **Examples:**
+  - `[]` = manually started via `run_command()`
+  - `["user_saves"]` = triggered directly by single event
+  - `["user_saves", "command_started:Lint", "command_success:Lint"]` = chained triggers
 
 **State Transition Methods:**
 ```python
