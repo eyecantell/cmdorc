@@ -981,43 +981,43 @@ class MockExecutor(CommandExecutor):
 - [x] `MockExecutor` (test double)
 
 ### Phase 4: Trigger System & RunHandle ✅
-- [ ] `TriggerEngine`
-  - [ ] Pattern matching (exact + wildcards)
-  - [ ] Callback registry
-  - [ ] Dispatch with ordering guarantee
-  - [ ] Cycle prevention
+- [x] `TriggerEngine`
+  - [x] Pattern matching (exact + wildcards)
+  - [x] Callback registry
+  - [x] Dispatch with ordering guarantee
+  - [x] Cycle prevention
 - [x] `RunHandle` facade
   - [x] Properties (command_name, run_id, state, success, output, error, duration_str, is_finalized, start_time, end_time, comment) 
   - [x] `wait()` with optional timeout
   - [x] Internal monitoring task (event-driven via asyncio.Event) 
 
 ### Phase 5: Orchestrator
-- [ ] `CommandOrchestrator`
-  - [ ] `run_command()` - returns RunHandle
-  - [ ] `trigger()` - event dispatching with cycle prevention
-  - [ ] Config management (add/remove/update/reload)
-  - [ ] Query methods (list, get_status, get_history)
-  - [ ] Handle management:
-    - [ ] `get_handle_by_run_id()`
-    - [ ] `get_active_handles()`
-    - [ ] `get_all_active_handles()`
-  - [ ] Cancellation:
-    - [ ] `cancel_command()` - cancel all runs of a command
-    - [ ] `cancel_run()` - cancel specific run by run_id
-    - [ ] `cancel_all()` - cancel all active runs
-  - [ ] Graceful shutdown:
-    - [ ] `shutdown()` - with timeout and optional cancel_running
-  - [ ] Callback registration (on_event, off_event, set_lifecycle_callback)
-  - [ ] Internal coordination (_prepare_run, _apply_policy, etc.)
-  - [ ] Internal handle registry management (_register_handle, _unregister_handle)
-  - [ ] Cleanup
+- [x] `CommandOrchestrator`
+  - [x] `run_command()` - returns RunHandle
+  - [x] `trigger()` - event dispatching with cycle prevention
+  - [x] Config management (add/remove/update/reload)
+  - [x] Query methods (list, get_status, get_history)
+  - [x] Handle management:
+    - [x] `get_handle_by_run_id()`
+    - [x] `get_active_handles()`
+    - [x] `get_all_active_handles()`
+  - [x] Cancellation:
+    - [x] `cancel_command()` - cancel all runs of a command
+    - [x] `cancel_run()` - cancel specific run by run_id
+    - [x] `cancel_all()` - cancel all active runs
+  - [x] Graceful shutdown:
+    - [x] `shutdown()` - with timeout and optional cancel_running
+  - [x] Callback registration (on_event, off_event, set_lifecycle_callback)
+  - [x] Internal coordination (_prepare_run, _apply_policy, etc.)
+  - [x] Internal handle registry management (_register_handle, _unregister_handle)
+  - [x] Cleanup
 
 ### Phase 6: Polish
-- [ ] Comprehensive test suite (in progress: ~100+ tests so far)
-- [ ] Documentation (API reference, examples)
-- [ ] Type hints validation (mypy clean)
-- [ ] Performance profiling
-- [ ] PyPI packaging
+- [x] Comprehensive test suite (in progress: ~100+ tests so far)
+- [x] Documentation (API reference, examples)
+- [x] Type hints validation (mypy clean)
+- [x] Performance profiling
+- [x] PyPI packaging
 
 ---
 
