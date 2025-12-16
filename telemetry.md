@@ -1,4 +1,4 @@
-### High-Level Design/Plan for Telemetry/Metrics (targeted for 0.2.0)
+### High-Level Design/Plan for Telemetry/Metrics (targeted for 0.3.0)
 
 #### 1. **Design Principles**
    - **Privacy-First:** Opt-in only; no data leaves the machine without explicit consent. Use anonymization (hashing, aggregation) at higher levels.
