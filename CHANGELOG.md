@@ -5,7 +5,15 @@ All notable changes to cmdorc will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2025-12-17
+
+### Fixed
+- **Critical PyPI packaging bug**: Version 0.2.0 published to PyPI missing all Python source files from `src/cmdorc/` due to misconfigured `includes` in `pyproject.toml`. Only `CHANGELOG.md` and `py.typed` were included, making the package non-functional. All users should upgrade to 0.2.1 immediately.
+- Build configuration now uses PDM's automatic package discovery instead of explicit includes
+- **Do not use version 0.2.0** - it is non-functional. This was a packaging error on PyPI, not a code issue.
+
 ## [0.2.0] - 2025-12-16
+⚠️ **DO NOT USE** - This version on PyPI is broken due to missing source files. Use 0.2.1 instead.
 
 ### Added
 - **Trigger Chain Tracking (Breadcrumbs)** - Complete visibility into trigger sequence
