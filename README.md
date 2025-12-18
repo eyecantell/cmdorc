@@ -344,6 +344,9 @@ Contributions welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for:
 
 MIT License - See [LICENSE](LICENSE) for details
 
+## Todo
+- Move TriggerChain utilities from textual-cmdorc to here.
+- Add optional metrics (see [telemetry](telemetry.md))
 ---
 
 **Made with ❤️ for async Python developers**
