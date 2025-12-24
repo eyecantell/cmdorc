@@ -100,6 +100,30 @@ class TestPropertyDelegation:
         # Before any run starts
         assert sample_handle.duration_str == "-"
 
+    def test_resolved_command_property_none(self, sample_handle: RunHandle):
+        """RunHandle.resolved_command should be None before command is prepared."""
+        assert sample_handle.resolved_command is None
+
+    def test_resolved_command_property_with_value(
+        self, sample_result: RunResult, sample_handle: RunHandle
+    ):
+        """RunHandle.resolved_command should return resolved command after preparation."""
+        # Set a resolved command on the result
+        resolved = ResolvedCommand(
+            command="pytest tests/",
+            cwd="/home/user/project",
+            env={"PATH": "/usr/bin"},
+            timeout_secs=300,
+            vars={"test_dir": "tests"},
+        )
+        sample_result.resolved_command = resolved
+
+        # Should be accessible via handle
+        assert sample_handle.resolved_command is resolved
+        assert sample_handle.resolved_command.command == "pytest tests/"
+        assert sample_handle.resolved_command.cwd == "/home/user/project"
+        assert sample_handle.resolved_command.timeout_secs == 300
+
     def test_all_properties_read_only(self, sample_handle: RunHandle):
         """All properties should be read-only (no setters)."""
         with pytest.raises(AttributeError):

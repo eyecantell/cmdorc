@@ -3,7 +3,7 @@
 [![PyPI version](https://badge.fury.io/py/cmdorc.svg)](https://badge.fury.io/py/cmdorc)
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Tests](https://img.shields.io/badge/tests-357%20passing-brightgreen)](https://github.com/eyecantell/cmdorc/tree/main/tests)
+[![Tests](https://img.shields.io/badge/tests-359%20passing-brightgreen)](https://github.com/eyecantell/cmdorc/tree/main/tests)
 [![Coverage](https://img.shields.io/badge/coverage-94%25-brightgreen)](https://github.com/eyecantell/cmdorc)
 [![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 [![Typing: PEP 561](https://img.shields.io/badge/typing-PEP%20561-blue)](https://peps.python.org/pep-0561/)
@@ -200,14 +200,16 @@ handle = await orchestrator.run_command("Tests")
 result = await handle.wait(timeout=30)  # Await completion (event-driven, no polling)
 
 # Properties (read-only)
-handle.state          # RunState: PENDING, RUNNING, SUCCESS, FAILED, CANCELLED
-handle.success        # bool or None
-handle.output         # str (stdout + stderr)
-handle.duration_str   # "1m 23s", "452ms", "1h 5m", "1d 3h"
-handle.is_finalized   # bool: True if completed
-handle.start_time     # datetime.datetime or None
-handle.end_time       # datetime.datetime or None
-handle.comment        # str: Cancellation reason or note
+handle.state            # RunState: PENDING, RUNNING, SUCCESS, FAILED, CANCELLED
+handle.success          # bool or None
+handle.output           # str (stdout + stderr)
+handle.duration_str     # "1m 23s", "452ms", "1h 5m", "1d 3h"
+handle.is_finalized     # bool: True if completed
+handle.start_time       # datetime.datetime or None
+handle.end_time         # datetime.datetime or None
+handle.comment          # str: Cancellation reason or note
+handle.resolved_command # ResolvedCommand | None: Fully resolved command details
+                        #   (command string, cwd, env vars, timeout, variable snapshot)
 ```
 
 ### RunResult (Accessed via RunHandle._result or history)

@@ -5,6 +5,17 @@ All notable changes to cmdorc will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **RunHandle.resolved_command property** - Exposes the fully resolved command details
+  - Access resolved command string (with all variable substitutions)
+  - Access working directory, environment variables, timeout settings
+  - Access variable snapshot used for the run
+  - Returns `ResolvedCommand | None` (None before command execution begins)
+  - Useful for debugging and understanding exactly what was executed
+- 2 new comprehensive tests for `resolved_command` property
+
 ## [0.2.1] - 2025-12-17
 
 ### Fixed

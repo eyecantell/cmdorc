@@ -14,7 +14,7 @@ import asyncio
 import logging
 from typing import Final
 
-from .run_result import RunResult, RunState
+from .run_result import ResolvedCommand, RunResult, RunState
 
 logger = logging.getLogger(__name__)
 
@@ -226,6 +226,19 @@ class RunHandle:
             Copy of the trigger chain
         """
         return self._result.trigger_chain.copy()
+
+    @property
+    def resolved_command(self) -> ResolvedCommand | None:
+        """
+        Snapshot of the resolved command settings at execution time.
+
+        Contains the fully resolved command string (with all variable substitutions),
+        working directory, environment variables, timeout, and variable snapshot.
+
+        Returns:
+            ResolvedCommand if the command has been prepared for execution, None otherwise
+        """
+        return self._result.resolved_command
 
     # ========================================================================
     # Internal Access (Advanced Usage)
