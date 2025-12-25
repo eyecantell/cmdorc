@@ -14,7 +14,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Access variable snapshot used for the run
   - Returns `ResolvedCommand | None` (None before command execution begins)
   - Useful for debugging and understanding exactly what was executed
-- 2 new comprehensive tests for `resolved_command` property
+  - 2 new comprehensive tests for `resolved_command` property
+- **CommandOrchestrator.preview_command() method** - Preview command resolution without execution
+  - Dry-run capability to see what would be executed before running
+  - Resolves all variables and returns `ResolvedCommand`
+  - Same signature as `run_command()` for consistency (name, vars)
+  - Useful for debugging, validation, UI previews, and "what-if" scenarios
+  - Raises `CommandNotFoundError` if command doesn't exist
+  - Raises `ValueError` if variable resolution fails
+  - 8 comprehensive tests covering all scenarios (basic, variables, env, errors, etc.)
 
 ## [0.2.1] - 2025-12-17
 

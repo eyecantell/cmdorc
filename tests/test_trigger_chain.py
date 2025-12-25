@@ -125,10 +125,7 @@ class TestCycleDetectionWithChains:
     def test_cycle_error_cycle_point(self):
         """TriggerCycleError should identify where cycle begins."""
         # Create a chain: ["start", "A", "B"] and try to add "start" again
-        context = TriggerContext(
-            seen={"start", "A", "B"},
-            history=["start", "A", "B"]
-        )
+        context = TriggerContext(seen={"start", "A", "B"}, history=["start", "A", "B"])
 
         with pytest.raises(TriggerCycleError) as exc_info:
             raise TriggerCycleError("start", context.history)
@@ -189,6 +186,7 @@ class TestTriggerChainMutationPrevention:
             history = orchestrator.get_history("Test", limit=1)
             # Create a handle from the result for testing the property
             from cmdorc import RunHandle
+
             handle = RunHandle(history[0])
 
         # Get chain and mutate it

@@ -3,7 +3,7 @@
 [![PyPI version](https://badge.fury.io/py/cmdorc.svg)](https://badge.fury.io/py/cmdorc)
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Tests](https://img.shields.io/badge/tests-359%20passing-brightgreen)](https://github.com/eyecantell/cmdorc/tree/main/tests)
+[![Tests](https://img.shields.io/badge/tests-367%20passing-brightgreen)](https://github.com/eyecantell/cmdorc/tree/main/tests)
 [![Coverage](https://img.shields.io/badge/coverage-94%25-brightgreen)](https://github.com/eyecantell/cmdorc)
 [![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 [![Typing: PEP 561](https://img.shields.io/badge/typing-PEP%20561-blue)](https://peps.python.org/pep-0561/)
@@ -251,6 +251,40 @@ orchestrator.get_active_handles("Tests")  # → List[RunHandle]
 orchestrator.get_handle_by_run_id("run-uuid")  # → RunHandle or None
 orchestrator.get_trigger_graph()  # → dict[str, list[str]] (triggers → commands)
 ```
+
+### Preview Commands (Dry-Run)
+
+Preview what would be executed without actually running:
+
+```python
+# Preview with variable overrides
+preview = orchestrator.preview_command("Deploy", vars={"env": "staging", "region": "us-east-1"})
+
+print(f"Would run: {preview.command}")
+# Output: "kubectl apply -f deploy.yaml --env=staging --region=us-east-1"
+
+print(f"Working directory: {preview.cwd}")
+# Output: "/home/user/project"
+
+print(f"Environment: {preview.env}")
+# Output: {...merged system env + config env...}
+
+print(f"Timeout: {preview.timeout_secs}s")
+# Output: 300
+
+print(f"Variables used: {preview.vars}")
+# Output: {"env": "staging", "region": "us-east-1", "base_dir": "/home/user/project"}
+
+# Confirm before running
+if user_confirms():
+    handle = await orchestrator.run_command("Deploy", vars={"env": "staging", "region": "us-east-1"})
+```
+
+Use cases:
+- **Dry-runs** - See exactly what will execute before running
+- **Debugging** - Troubleshoot variable resolution issues
+- **Validation** - Verify configuration changes
+- **UI previews** - Show users what will happen before they confirm
 
 ## Why cmdorc?
 

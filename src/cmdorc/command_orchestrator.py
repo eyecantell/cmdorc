@@ -364,7 +364,9 @@ class CommandOrchestrator:
             ConcurrencyLimitError: If policy denies run
         """
         # Prepare run with trigger chain
-        resolved, result = self._prepare_run(config, None, event_name, trigger_chain=context.history.copy())
+        resolved, result = self._prepare_run(
+            config, None, event_name, trigger_chain=context.history.copy()
+        )
 
         # Apply policy (includes debounce check)
         active_runs = self._runtime.get_active_runs(config.name)
@@ -504,10 +506,7 @@ class CommandOrchestrator:
             # If no context provided but we have a handle, inherit parent's trigger chain
             if context is None and handle is not None:
                 parent_chain = handle._result.trigger_chain
-                context = TriggerContext(
-                    seen=set(parent_chain),
-                    history=parent_chain.copy()
-                )
+                context = TriggerContext(seen=set(parent_chain), history=parent_chain.copy())
 
             # Check if we should track in context
             if context is not None:
@@ -802,6 +801,53 @@ class CommandOrchestrator:
         """
         self._runtime.verify_registered(name)
         return self._runtime.get_history(name, limit)
+
+    def preview_command(self, name: str, vars: dict[str, str] | None = None) -> ResolvedCommand:
+        """
+        Preview what would be executed without actually running the command.
+
+        Resolves all variables and returns the final command that would be executed,
+        including the resolved command string, working directory, environment variables,
+        timeout, and variable snapshot. Useful for dry-runs, debugging, validation,
+        and UI previews.
+
+        Args:
+            name: Name of the command to preview
+            vars: Optional call-time variable overrides (same as run_command)
+
+        Returns:
+            ResolvedCommand with all templates resolved:
+                - command: Fully resolved command string
+                - cwd: Working directory (or None)
+                - env: Merged environment variables
+                - timeout_secs: Timeout setting
+                - vars: Frozen snapshot of all merged variables
+
+        Raises:
+            CommandNotFoundError: If command doesn't exist
+            ValueError: If variable resolution fails (missing vars, cycles, etc.)
+
+        Example:
+            >>> # Preview before running
+            >>> preview = orchestrator.preview_command("Deploy", vars={"env": "staging"})
+            >>> print(f"Would run: {preview.command}")
+            >>> print(f"In directory: {preview.cwd}")
+            >>> print(f"Variables: {preview.vars}")
+            >>>
+            >>> # Confirm and run
+            >>> if user_confirms():
+            ...     handle = await orchestrator.run_command("Deploy", vars={"env": "staging"})
+        """
+        config = self._runtime.get_command(name)
+        if not config:
+            raise CommandNotFoundError(f"Command '{name}' not found")
+
+        return prepare_resolved_command(
+            config=config,
+            global_vars=self._global_vars,
+            call_time_vars=vars,
+            include_env=True,
+        )
 
     # ========================================================================
     # Handle Management

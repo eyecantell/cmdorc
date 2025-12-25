@@ -766,6 +766,142 @@ class TestQueries:
         assert len(history) >= 1
         # Most recent should be first or last depending on order
 
+    def test_preview_command_basic(self, orchestrator):
+        """preview_command() returns ResolvedCommand without executing."""
+        preview = orchestrator.preview_command("Test")
+
+        # Should return ResolvedCommand
+        assert preview is not None
+        assert preview.command == "echo hello"
+        assert preview.timeout_secs is None
+        assert preview.cwd is None
+
+        # Should NOT have executed (no active handles)
+        handles = orchestrator.get_all_active_handles()
+        assert len(handles) == 0
+
+    def test_preview_command_with_variables(self):
+        """preview_command() resolves variables correctly."""
+        config = CommandConfig(
+            name="Deploy",
+            command="deploy --env={{ env }} --region={{ region }}",
+            triggers=["deploy"],
+            vars={"region": "us-west-2"},
+        )
+        runner_config = RunnerConfig(commands=[config], vars={"env": "dev"})
+        orchestrator = CommandOrchestrator(runner_config, executor=MockExecutor())
+
+        # Preview with call-time override
+        preview = orchestrator.preview_command(
+            "Deploy", vars={"env": "production", "region": "eu-central-1"}
+        )
+
+        assert preview.command == "deploy --env=production --region=eu-central-1"
+        assert preview.vars["env"] == "production"
+        assert preview.vars["region"] == "eu-central-1"
+
+    def test_preview_command_with_cwd_and_timeout(self):
+        """preview_command() includes cwd and timeout settings."""
+        config = CommandConfig(
+            name="Build",
+            command="make build",
+            triggers=["build"],
+            cwd="/home/user/project",
+            timeout_secs=300,
+        )
+        runner_config = RunnerConfig(commands=[config])
+        orchestrator = CommandOrchestrator(runner_config, executor=MockExecutor())
+
+        preview = orchestrator.preview_command("Build")
+
+        assert preview.command == "make build"
+        assert preview.cwd == "/home/user/project"
+        assert preview.timeout_secs == 300
+
+    def test_preview_command_with_env_vars(self):
+        """preview_command() resolves env variables correctly."""
+        config = CommandConfig(
+            name="Test",
+            command="npm test",
+            triggers=["test"],
+            env={"NODE_ENV": "{{ env }}", "DEBUG": "true"},
+            vars={"env": "test"},
+        )
+        runner_config = RunnerConfig(commands=[config])
+        orchestrator = CommandOrchestrator(runner_config, executor=MockExecutor())
+
+        preview = orchestrator.preview_command("Test")
+
+        # Env should include both config env and system env
+        assert "NODE_ENV" in preview.env
+        assert preview.env["NODE_ENV"] == "test"
+        assert "DEBUG" in preview.env
+        assert preview.env["DEBUG"] == "true"
+        # System env should also be included
+        assert "PATH" in preview.env
+
+    def test_preview_command_not_found(self, orchestrator):
+        """preview_command() raises CommandNotFoundError for unknown command."""
+        from cmdorc import CommandNotFoundError
+
+        with pytest.raises(CommandNotFoundError, match="Command 'NonExistent' not found"):
+            orchestrator.preview_command("NonExistent")
+
+    def test_preview_command_missing_variable(self):
+        """preview_command() raises ValueError for missing variables."""
+        config = CommandConfig(
+            name="Deploy",
+            command="deploy --env={{ env }}",
+            triggers=["deploy"],
+        )
+        runner_config = RunnerConfig(commands=[config])
+        orchestrator = CommandOrchestrator(runner_config, executor=MockExecutor())
+
+        with pytest.raises(ValueError, match="Missing variable"):
+            orchestrator.preview_command("Deploy")
+
+    def test_preview_command_nested_variables(self):
+        """preview_command() resolves nested variables in command string."""
+        config = CommandConfig(
+            name="Test",
+            command="pytest {{ test_path }}",
+            triggers=["test"],
+            vars={"test_path": "{{ base_dir }}/tests"},
+        )
+        runner_config = RunnerConfig(commands=[config], vars={"base_dir": "/app"})
+        orchestrator = CommandOrchestrator(runner_config, executor=MockExecutor())
+
+        preview = orchestrator.preview_command("Test")
+
+        # Command string should be fully resolved
+        assert preview.command == "pytest /app/tests"
+        # vars dict contains the merged variables (templates may not be resolved in the dict itself)
+        assert preview.vars["base_dir"] == "/app"
+        assert "test_path" in preview.vars
+
+    def test_preview_command_does_not_affect_execution(self):
+        """preview_command() doesn't affect subsequent run_command() calls."""
+        config = CommandConfig(
+            name="Test",
+            command="echo {{ msg }}",
+            triggers=["test"],
+            vars={"msg": "default"},
+        )
+        runner_config = RunnerConfig(commands=[config])
+        orchestrator = CommandOrchestrator(runner_config, executor=MockExecutor())
+
+        # Preview with override
+        preview1 = orchestrator.preview_command("Test", vars={"msg": "preview"})
+        assert preview1.command == "echo preview"
+
+        # Preview with different override
+        preview2 = orchestrator.preview_command("Test", vars={"msg": "another"})
+        assert preview2.command == "echo another"
+
+        # Preview without override should use default
+        preview3 = orchestrator.preview_command("Test")
+        assert preview3.command == "echo default"
+
 
 # ========================================================================
 # Callback Tests

@@ -126,8 +126,8 @@ class TriggerCycleError(CmdorcError):
 
         # Build detailed error message
         if self.cycle_point is not None:
-            pre_cycle = cycle_path[:self.cycle_point]
-            cycle = cycle_path[self.cycle_point:]
+            pre_cycle = cycle_path[: self.cycle_point]
+            cycle = cycle_path[self.cycle_point :]
 
             msg_parts = []
             if pre_cycle:
