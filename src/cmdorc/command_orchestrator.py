@@ -35,7 +35,6 @@ from .exceptions import (
     OrchestratorShutdownError,
     TriggerCycleError,
 )
-from .local_subprocess_executor import LocalSubprocessExecutor
 from .run_handle import RunHandle
 from .run_result import ResolvedCommand, RunResult, RunState
 from .runtime_vars import prepare_resolved_command
@@ -1029,10 +1028,11 @@ class CommandOrchestrator:
             logger.warning(f"Failed to list run directories for '{command_name}': {e}")
             return
 
-        # Delete oldest if we exceed keep_history
+        # Delete oldest if we're at or above keep_history (to make room for new run)
         keep_history = self._output_storage.keep_history
-        if len(run_dirs) > keep_history:
-            to_delete = run_dirs[:-keep_history]  # Keep the newest N
+        if len(run_dirs) >= keep_history:
+            # Keep newest (keep_history-1) to make room for the new run we're about to create
+            to_delete = run_dirs[: -(keep_history - 1)] if keep_history > 1 else run_dirs
 
             for run_dir in to_delete:
                 try:
