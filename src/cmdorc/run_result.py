@@ -6,6 +6,7 @@ import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
+from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -104,6 +105,15 @@ class RunResult:
     # ------------------------------------------------------------------ #
     resolved_command: ResolvedCommand | None = None
     """Command settings after variable resolution."""
+
+    # ------------------------------------------------------------------ #
+    # Output file paths (set by CommandExecutor if output_storage enabled)
+    # ------------------------------------------------------------------ #
+    metadata_file: Path | None = None
+    """Path to metadata TOML file (if output_storage enabled)."""
+
+    output_file: Path | None = None
+    """Path to output text file (if output_storage enabled)."""
 
     # ------------------------------------------------------------------ #
     # Comment
@@ -236,6 +246,89 @@ class RunResult:
             "duration_str": self.duration_str,
             "resolved_command": self.resolved_command.to_dict() if self.resolved_command else None,
         }
+
+    def to_toml(self) -> str:
+        """
+        Serialize RunResult to TOML format for metadata file.
+
+        Returns:
+            TOML string with all metadata fields
+
+        Example output:
+            command_name = "Tests"
+            run_id = "123e4567-e89b-12d3-a456-426614174000"
+            state = "SUCCESS"
+            duration_str = "2.3s"
+            start_time = "2025-12-25T10:30:00"
+            end_time = "2025-12-25T10:30:02"
+            success = true
+            trigger_chain = ["file_changed", "command_success:Lint"]
+
+            [resolved_command]
+            command = "pytest tests/"
+            cwd = "/home/user/project"
+            timeout_secs = 300
+
+            [resolved_command.vars]
+            test_dir = "tests"
+        """
+
+        def escape_toml_string(s: str) -> str:
+            """Escape special characters for TOML string values."""
+            return s.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
+
+        lines = [
+            f'command_name = "{escape_toml_string(self.command_name)}"',
+            f'run_id = "{self.run_id}"',
+            f'state = "{self.state.value}"',
+            f'duration_str = "{self.duration_str}"',
+        ]
+
+        # Add optional fields
+        if self.start_time:
+            lines.append(f'start_time = "{self.start_time.isoformat()}"')
+        if self.end_time:
+            lines.append(f'end_time = "{self.end_time.isoformat()}"')
+        if self.success is not None:
+            lines.append(f"success = {str(self.success).lower()}")
+        if self.comment:
+            lines.append(f'comment = "{escape_toml_string(self.comment)}"')
+        if self.error:
+            error_str = str(self.error)
+            lines.append(f'error = "{escape_toml_string(error_str)}"')
+        if self.trigger_event:
+            lines.append(f'trigger_event = "{escape_toml_string(self.trigger_event)}"')
+
+        # Add trigger chain
+        if self.trigger_chain:
+            chain_items = ", ".join(f'"{escape_toml_string(t)}"' for t in self.trigger_chain)
+            lines.append(f"trigger_chain = [{chain_items}]")
+
+        # Add resolved command section
+        if self.resolved_command:
+            lines.append("")
+            lines.append("[resolved_command]")
+            lines.append(f'command = "{escape_toml_string(self.resolved_command.command)}"')
+            if self.resolved_command.cwd:
+                lines.append(f'cwd = "{escape_toml_string(self.resolved_command.cwd)}"')
+            if self.resolved_command.timeout_secs is not None:
+                lines.append(f"timeout_secs = {self.resolved_command.timeout_secs}")
+
+            # Add vars subsection if present
+            if self.resolved_command.vars:
+                lines.append("")
+                lines.append("[resolved_command.vars]")
+                for key, value in sorted(self.resolved_command.vars.items()):
+                    lines.append(f'{key} = "{escape_toml_string(value)}"')
+
+        # Add file paths if present (just the filename, not full path)
+        if self.output_file:
+            lines.append("")
+            lines.append(f'output_file = "{self.output_file.name}"')
+        if self.metadata_file:
+            lines.append(f'metadata_file = "{self.metadata_file.name}"')
+
+        return "\n".join(lines) + "\n"
 
     # ------------------------------------------------------------------ #
     # Internal callback for run finalization

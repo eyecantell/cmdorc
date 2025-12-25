@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from pathlib import Path
 from typing import Final
 
 from .run_result import ResolvedCommand, RunResult, RunState
@@ -239,6 +240,26 @@ class RunHandle:
             ResolvedCommand if the command has been prepared for execution, None otherwise
         """
         return self._result.resolved_command
+
+    @property
+    def metadata_file(self) -> Path | None:
+        """
+        Path to metadata TOML file (if output_storage enabled).
+
+        Returns:
+            Path to .toml file containing run metadata, or None if not written yet
+        """
+        return self._result.metadata_file
+
+    @property
+    def output_file(self) -> Path | None:
+        """
+        Path to output text file (if output_storage enabled).
+
+        Returns:
+            Path to .txt file containing command output, or None if not written yet
+        """
+        return self._result.output_file
 
     # ========================================================================
     # Internal Access (Advanced Usage)

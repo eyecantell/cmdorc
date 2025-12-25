@@ -22,6 +22,7 @@ Inspired by Make/npm scripts - but instead of file changes, you trigger workflow
 - **Smart Retrigger Policies** - `cancel_and_restart` or `ignore`
 - **Cancellation Triggers** - Auto-cancel commands on certain events
 - **Rich State Tracking** - Live runs, history, durations, output capture
+- **Output Storage** - Automatic persistence of outputs to disk with retention policies
 - **Template Variables** - `{{ base_directory }}`, nested resolution, runtime overrides
 - **TOML Config + Validation** - Clear, declarative setup with validation
 - **Cycle Detection** - Prevents infinite trigger loops with clear warnings
@@ -210,6 +211,8 @@ handle.end_time         # datetime.datetime or None
 handle.comment          # str: Cancellation reason or note
 handle.resolved_command # ResolvedCommand | None: Fully resolved command details
                         #   (command string, cwd, env vars, timeout, variable snapshot)
+handle.metadata_file    # Path | None: Path to metadata.toml (if output_storage enabled)
+handle.output_file      # Path | None: Path to output.txt (if output_storage enabled)
 ```
 
 ### RunResult (Accessed via RunHandle._result or history)
@@ -243,6 +246,56 @@ orchestrator = CommandOrchestrator(commands)
 ```
 
 **Example:** See `examples/basic/01_hello_world.py` or `examples/basic/02_simple_workflow.py` for programmatic configuration patterns.
+
+### Output Storage
+
+Automatically persist command outputs to disk with configurable retention:
+
+```toml
+[output_storage]
+directory = ".cmdorc/outputs"           # Where to store files (default: .cmdorc/outputs)
+pattern = "{command_name}/{run_id}"     # Directory structure pattern
+keep_history = 10                       # Keep last 10 runs per command
+
+# Options for keep_history:
+# keep_history = 0    # Disabled (no files written) [default]
+# keep_history = -1   # Unlimited (keep all files, never delete)
+# keep_history = N    # Keep last N runs (oldest deleted automatically)
+```
+
+**File Structure:**
+```
+.cmdorc/outputs/
+  Tests/
+    run-123e4567/           # Each run gets its own directory
+      metadata.toml         # Run metadata (state, duration, trigger chain, resolved command)
+      output.txt            # Command output (stdout + stderr)
+    run-456f8901/
+      metadata.toml
+      output.txt
+```
+
+**Access via RunHandle:**
+```python
+handle = await orchestrator.run_command("Tests")
+await handle.wait()
+
+# Access output files
+if handle.output_file:
+    print(f"Output saved to: {handle.output_file}")
+    with open(handle.output_file) as f:
+        print(f.read())
+
+if handle.metadata_file:
+    print(f"Metadata saved to: {handle.metadata_file}")
+```
+
+**Features:**
+- ✅ Works with successful, failed, and cancelled runs
+- ✅ Automatic retention policy enforcement (deletes oldest when limit exceeded)
+- ✅ Zero new dependencies (manual TOML generation)
+- ✅ No performance impact when disabled (default)
+- ✅ Cancelled commands preserve output if process exits gracefully
 
 ## Introspection (Great for UIs)
 

@@ -9,7 +9,7 @@ try:
 except ImportError:
     import tomli  # <3.11
 
-from .command_config import CommandConfig, RunnerConfig
+from .command_config import CommandConfig, OutputStorageConfig, RunnerConfig
 from .exceptions import ConfigValidationError
 
 logger = logging.getLogger(__name__)
@@ -39,6 +39,24 @@ def load_config(path: str | Path | BinaryIO | TextIO) -> RunnerConfig:
     vars_dict: dict[str, str] = data.get("variables", {}).copy()
     logger.debug(f"Loaded {len(vars_dict)} variables as templates (resolution deferred to runtime)")
 
+    # ────── Parse [output_storage] section ──────
+    output_storage_dict = data.get("output_storage", {}).copy()
+
+    # Resolve relative directory path relative to config file location
+    if "directory" in output_storage_dict and output_storage_dict["directory"] is not None:
+        dir_path = Path(output_storage_dict["directory"])
+        if not dir_path.is_absolute():
+            output_storage_dict["directory"] = str(base_dir / dir_path)
+
+    try:
+        output_storage = OutputStorageConfig(**output_storage_dict)
+        logger.debug(
+            f"Loaded output_storage config (enabled={output_storage.is_enabled}, "
+            f"keep_history={output_storage.keep_history})"
+        )
+    except TypeError as e:
+        raise ConfigValidationError(f"Invalid config in [output_storage]: {e}") from None
+
     # ────── Parse and fix commands ──────
     command_data = data.get("command", [])
     if not isinstance(command_data, list):
@@ -61,4 +79,4 @@ def load_config(path: str | Path | BinaryIO | TextIO) -> RunnerConfig:
     if not commands:
         raise ConfigValidationError("At least one [[command]] is required")
 
-    return RunnerConfig(commands=commands, vars=vars_dict)
+    return RunnerConfig(commands=commands, vars=vars_dict, output_storage=output_storage)

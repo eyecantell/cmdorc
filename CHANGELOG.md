@@ -8,6 +8,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Output Storage Feature** - Automatic persistence of command outputs to disk
+  - Configure via `[output_storage]` section in TOML with `keep_history` setting
+  - `keep_history = 0`: Disabled (no files written) [default]
+  - `keep_history = -1`: Unlimited (write all files, never delete)
+  - `keep_history = N` (N > 0): Keep last N runs per command (delete oldest)
+  - Metadata saved as `metadata.toml` files with full run details (state, duration, trigger chain, resolved command)
+  - Command output saved as `output.txt` files (stdout + stderr)
+  - Directory-per-run structure: `.cmdorc/outputs/{command_name}/{run_id}/`
+  - Configurable directory and pattern via TOML
+  - Automatic retention policy enforcement (deletes oldest run directories when limit exceeded)
+  - Accessible via `RunHandle.output_file` and `RunHandle.metadata_file` properties
+  - Works with successful, failed, and cancelled runs
+  - Zero new dependencies (manual TOML generation)
+  - No performance impact when disabled (default)
+
+- **Output Capture on Cancellation** - Commands now preserve output when cancelled
+  - Cancelled commands capture output before termination (if process exits gracefully within grace period)
+  - Works with user cancellation and auto-cancel triggers
+  - Best-effort capture with 0.5s timeout after SIGTERM
+  - Falls back gracefully if process requires SIGKILL (output not captured)
+
 - **RunHandle.resolved_command property** - Exposes the fully resolved command details
   - Access resolved command string (with all variable substitutions)
   - Access working directory, environment variables, timeout settings
@@ -15,6 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Returns `ResolvedCommand | None` (None before command execution begins)
   - Useful for debugging and understanding exactly what was executed
   - 2 new comprehensive tests for `resolved_command` property
+
 - **CommandOrchestrator.preview_command() method** - Preview command resolution without execution
   - Dry-run capability to see what would be executed before running
   - Resolves all variables and returns `ResolvedCommand`
@@ -23,6 +45,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Raises `CommandNotFoundError` if command doesn't exist
   - Raises `ValueError` if variable resolution fails
   - 8 comprehensive tests covering all scenarios (basic, variables, env, errors, etc.)
+
+### Changed
+- **OutputStorageConfig** added to public API exports
+- **LocalSubprocessExecutor** now accepts `output_storage` parameter
+- **CommandOrchestrator** passes `output_storage` to executor when creating default executor
+- **RunResult** now includes `metadata_file` and `output_file` fields (Path | None)
+- **RunHandle** exposes `metadata_file` and `output_file` properties
+- **load_config()** now parses `[output_storage]` section from TOML files
 
 ## [0.2.1] - 2025-12-17
 

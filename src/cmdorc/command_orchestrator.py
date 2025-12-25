@@ -71,12 +71,22 @@ class CommandOrchestrator:
         """
         # Core components
         self._runtime = CommandRuntime()
-        self._executor = executor or LocalSubprocessExecutor()
         self._trigger_engine = TriggerEngine(self._runtime)
         self._policy = ConcurrencyPolicy()
 
         # Global variables from RunnerConfig
         self._global_vars = runner_config.vars.copy()
+
+        # Output storage configuration
+        self._output_storage = runner_config.output_storage
+
+        # Create executor with output storage config if not provided
+        if executor is None:
+            from .local_subprocess_executor import LocalSubprocessExecutor
+
+            executor = LocalSubprocessExecutor(output_storage=self._output_storage)
+
+        self._executor = executor
 
         # Handle registry: run_id -> RunHandle
         self._handles: dict[str, RunHandle] = {}
@@ -93,7 +103,10 @@ class CommandOrchestrator:
         for config in runner_config.commands:
             self._runtime.register_command(config)
 
-        logger.debug(f"Initialized CommandOrchestrator with {len(runner_config.commands)} commands")
+        logger.debug(
+            f"Initialized CommandOrchestrator with {len(runner_config.commands)} commands "
+            f"(output_storage_enabled={self._output_storage.is_enabled})"
+        )
 
     # ========================================================================
     # Execution: Manual
@@ -145,6 +158,9 @@ class CommandOrchestrator:
             config = self._runtime.get_command(name)
             if config is None:
                 raise CommandNotFoundError(f"Command '{name}' not registered")
+
+            # Enforce output file retention policy before starting new run
+            self._enforce_output_retention(name)
 
             # Prepare run (merge vars, create ResolvedCommand + RunResult)
             resolved, result = self._prepare_run(config, vars, trigger_event=None)
@@ -363,6 +379,9 @@ class CommandOrchestrator:
             DebounceError: If command in debounce window
             ConcurrencyLimitError: If policy denies run
         """
+        # Enforce output file retention policy before starting new run
+        self._enforce_output_retention(config.name)
+
         # Prepare run with trigger chain
         resolved, result = self._prepare_run(
             config, None, event_name, trigger_chain=context.history.copy()
@@ -975,6 +994,52 @@ class CommandOrchestrator:
         """
         self._trigger_engine.set_lifecycle_callback(name, on_success, on_failed, on_cancelled)
         logger.debug(f"Set lifecycle callbacks for command '{name}'")
+
+    def _enforce_output_retention(self, command_name: str) -> None:
+        """
+        Enforce output file retention policy for a command.
+
+        Deletes oldest run directories if count exceeds keep_history setting.
+        Called before starting new runs to maintain storage limits.
+
+        Args:
+            command_name: Name of command to clean up
+        """
+        import shutil
+        from pathlib import Path
+
+        # Skip if output storage disabled or unlimited
+        if not self._output_storage.is_enabled or self._output_storage.keep_history <= 0:
+            return
+
+        # Build directory path for this command
+        base_dir = Path(self._output_storage.directory)
+        command_dir = base_dir / command_name
+
+        if not command_dir.exists():
+            return
+
+        # Find all run directories (subdirectories of command_dir)
+        try:
+            run_dirs = sorted(
+                [d for d in command_dir.iterdir() if d.is_dir()],
+                key=lambda p: p.stat().st_mtime,  # Sort by modification time
+            )
+        except OSError as e:
+            logger.warning(f"Failed to list run directories for '{command_name}': {e}")
+            return
+
+        # Delete oldest if we exceed keep_history
+        keep_history = self._output_storage.keep_history
+        if len(run_dirs) > keep_history:
+            to_delete = run_dirs[:-keep_history]  # Keep the newest N
+
+            for run_dir in to_delete:
+                try:
+                    shutil.rmtree(run_dir)  # Delete entire directory
+                    logger.debug(f"Deleted old run directory: {run_dir}")
+                except Exception as e:
+                    logger.warning(f"Failed to delete run directory {run_dir}: {e}")
 
     # ========================================================================
     # Lifecycle: Shutdown & Cleanup

@@ -14,7 +14,9 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+from pathlib import Path
 
+from .command_config import OutputStorageConfig
 from .command_executor import CommandExecutor
 from .run_result import ResolvedCommand, RunResult
 
@@ -33,12 +35,15 @@ class LocalSubprocessExecutor(CommandExecutor):
     - Automatic cleanup on shutdown
     """
 
-    def __init__(self, cancel_grace_period: float = 3.0):
+    def __init__(
+        self, cancel_grace_period: float = 3.0, output_storage: OutputStorageConfig | None = None
+    ):
         """
         Initialize the executor.
 
         Args:
             cancel_grace_period: Seconds to wait for SIGTERM before SIGKILL
+            output_storage: Optional output storage configuration
         """
         # Active processes: run_id -> subprocess.Process
         self._processes: dict[str, asyncio.subprocess.Process] = {}
@@ -49,8 +54,13 @@ class LocalSubprocessExecutor(CommandExecutor):
         # Cancellation grace period
         self._cancel_grace_period = cancel_grace_period
 
+        # Output storage configuration
+        self._output_storage = output_storage or OutputStorageConfig()
+
         logger.debug(
-            f"Initialized LocalSubprocessExecutor (cancel_grace_period={cancel_grace_period}s)"
+            f"Initialized LocalSubprocessExecutor ("
+            f"cancel_grace_period={cancel_grace_period}s, "
+            f"output_storage_enabled={self._output_storage.is_enabled})"
         )
 
     async def start_run(
@@ -149,11 +159,22 @@ class LocalSubprocessExecutor(CommandExecutor):
                 result.mark_failed(error_msg)
                 logger.debug(f"Run {run_id[:8]} failed: {error_msg} (output={len(output)} bytes)")
 
+            # ===== Write output files if enabled =====
+            if self._output_storage.is_enabled:
+                self._write_output_files(result)
+            # ===== End file writing =====
+
         except asyncio.CancelledError:
             # Task was cancelled (likely by cancel_run)
             logger.debug(f"Monitor task for run {run_id[:8]} was cancelled")
             if process and process.returncode is None:
                 await self._kill_process(process)
+
+            # ===== Write output files even for cancelled runs (if we captured output) =====
+            if self._output_storage.is_enabled and result.output:
+                self._write_output_files(result)
+            # ===== End file writing =====
+
             # Don't mark as cancelled here - cancel_run() does that
             raise
 
@@ -212,6 +233,26 @@ class LocalSubprocessExecutor(CommandExecutor):
                 try:
                     await asyncio.wait_for(process.wait(), timeout=self._cancel_grace_period)
                     logger.debug(f"Run {run_id[:8]} terminated gracefully")
+
+                    # ===== Capture output after graceful exit =====
+                    if process.stdout:
+                        try:
+                            output_bytes = await asyncio.wait_for(
+                                process.stdout.read(),
+                                timeout=0.5,  # Short timeout to read buffered output
+                            )
+                            if output_bytes:
+                                result.output = output_bytes.decode("utf-8", errors="replace")
+                                logger.debug(
+                                    f"Captured {len(result.output)} bytes of output "
+                                    f"before cancellation of run {run_id[:8]}"
+                                )
+                        except asyncio.TimeoutError:
+                            logger.debug(f"No output available to capture for run {run_id[:8]}")
+                        except Exception as e:
+                            logger.debug(f"Could not capture output for run {run_id[:8]}: {e}")
+                    # ===== End output capture =====
+
                 except asyncio.TimeoutError:
                     # Still running, send SIGKILL
                     logger.warning(f"Run {run_id[:8]} didn't terminate, sending SIGKILL")
@@ -300,6 +341,63 @@ class LocalSubprocessExecutor(CommandExecutor):
             "graceful_cancellation",
         }
         return feature in supported
+
+    def _build_output_path(self, result: RunResult) -> Path:
+        """
+        Build output directory path from pattern.
+
+        Args:
+            result: The RunResult to build path for
+
+        Returns:
+            Path to directory for this run (contains metadata.toml and output.txt)
+        """
+        # Substitute pattern variables to get directory path
+        dir_path = self._output_storage.pattern.format(
+            command_name=result.command_name, run_id=result.run_id
+        )
+
+        # Build full path
+        base_dir = Path(self._output_storage.directory)
+        return base_dir / dir_path
+
+    def _write_output_files(self, result: RunResult) -> None:
+        """
+        Write output and metadata files for a completed run.
+
+        Creates directory structure based on pattern, then writes:
+            - metadata.toml: Run metadata
+            - output.txt: Command output
+
+        Args:
+            result: The RunResult to persist
+
+        Note: Errors are logged but don't fail the run.
+        """
+        try:
+            # Get run directory from pattern
+            run_dir = self._build_output_path(result)
+
+            # Create directory
+            run_dir.mkdir(parents=True, exist_ok=True)
+
+            # Write output file
+            output_path = run_dir / "output.txt"
+            output_path.write_text(result.output or "", encoding="utf-8")
+
+            # Write metadata file
+            metadata_path = run_dir / "metadata.toml"
+            metadata_path.write_text(result.to_toml(), encoding="utf-8")
+
+            # Update result with file paths
+            result.output_file = output_path
+            result.metadata_file = metadata_path
+
+            logger.debug(f"Wrote output files to {run_dir}")
+
+        except Exception as e:
+            logger.error(f"Failed to write output files for run {result.run_id[:8]}: {e}")
+            # Don't re-raise - file writing errors shouldn't fail the run
 
     def __repr__(self) -> str:
         active = len(self._processes)
