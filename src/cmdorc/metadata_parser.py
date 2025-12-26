@@ -2,6 +2,7 @@
 Metadata parser for loading persisted RunResult objects from TOML files.
 
 Parses metadata.toml files created by RunResult.to_toml() and reconstructs
+Reads sibling `output.txt` files for command output
 RunResult objects for history loading on startup.
 """
 

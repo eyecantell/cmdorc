@@ -254,8 +254,10 @@ Automatically persist command outputs to disk with configurable retention:
 ```toml
 [output_storage]
 directory = ".cmdorc/outputs"           # Where to store files (default: .cmdorc/outputs)
-pattern = "{command_name}/{run_id}"     # Directory structure pattern
 keep_history = 10                       # Keep last 10 runs per command
+
+# Files are always organized as: {command_name}/{run_id}/
+# This structure is required for retention enforcement.
 
 # Options for keep_history:
 # keep_history = 0    # Disabled (no files written) [default]
@@ -455,6 +457,13 @@ Control how commands behave when triggered multiple times:
 - `max_concurrent` - Limit parallel executions (0 = unlimited)
 - `on_retrigger` - `cancel_and_restart` or `ignore`
 - `debounce_in_ms` - Delay re-runs by milliseconds
+- `debounce_mode` - `"start"` or `"completion"` (controls debounce timing)
+
+**Debounce Modes:**
+- `"start"` (default): Prevents starts within debounce_in_ms of last START time
+  Good for: Preventing rapid button mashing, duplicate triggers
+- `"completion"`: Prevents starts within debounce_in_ms of last COMPLETION time
+  Good for: Ensuring minimum gap between consecutive runs of long-running commands
 
 **Example:** See `examples/advanced/03_concurrency_policies.py` for demonstrations of all concurrency control patterns.
 

@@ -344,7 +344,7 @@ class LocalSubprocessExecutor(CommandExecutor):
 
     def _build_output_path(self, result: RunResult) -> Path:
         """
-        Build output directory path from pattern.
+        Build output directory path using fixed pattern.
 
         Args:
             result: The RunResult to build path for
@@ -352,10 +352,10 @@ class LocalSubprocessExecutor(CommandExecutor):
         Returns:
             Path to directory for this run (contains metadata.toml and output.txt)
         """
+        from .command_config import OUTPUT_PATTERN
+
         # Substitute pattern variables to get directory path
-        dir_path = self._output_storage.pattern.format(
-            command_name=result.command_name, run_id=result.run_id
-        )
+        dir_path = OUTPUT_PATTERN.format(command_name=result.command_name, run_id=result.run_id)
 
         # Build full path
         base_dir = Path(self._output_storage.directory)

@@ -54,9 +54,13 @@ class CommandRuntime:
         # Size controlled by CommandConfig.keep_in_memory
         self._history: dict[str, deque[RunResult]] = {}
 
-        # Debounce tracking: name -> timestamp of last START (not completion!)
-        # This prevents rapid successive starts (e.g., button mashing)
+        # Debounce tracking: name -> timestamp of last START
+        # Used when debounce_mode="start"
         self._last_start: dict[str, datetime.datetime] = {}
+
+        # Debounce tracking: name -> timestamp of last COMPLETION
+        # Used when debounce_mode="completion"
+        self._last_completion: dict[str, datetime.datetime] = {}
 
     # ================================================================
     # Configuration Management
@@ -198,10 +202,10 @@ class CommandRuntime:
         This method:
         1. Removes from active runs
         2. Updates latest_result
-        3. Appends to history (if keep_history > 0)
+        3. Records completion time for debounce (if debounce_mode="completion")
+        4. Appends to history (if keep_in_memory > 0)
 
-        Note: Debounce tracking uses START time (recorded in add_live_run),
-        not completion time, so we don't update _last_start here.
+        Note: _last_start is set in add_live_run() for debounce_mode="start".
 
         Raises:
             KeyError if command not registered
@@ -224,10 +228,19 @@ class CommandRuntime:
         except ValueError:
             logger.warning(f"Run {result.run_id[:8]} for '{name}' was not in active list")
 
-        # Update latest result (always, even if keep_history=0)
+        # Update latest result (always, even if keep_in_memory=0)
         self._latest_result[name] = result
 
-        # If a last start has not been recorded, set it to the start time of the run or now
+        # Record completion time for debounce_mode="completion"
+        if result.end_time is not None:
+            self._last_completion[name] = result.end_time
+            logger.debug(f"Recorded completion time for '{name}': {result.end_time.isoformat()}")
+        else:
+            # Fallback if end_time not set (shouldn't happen for finalized results)
+            self._last_completion[name] = datetime.datetime.now()
+            logger.debug(f"No end_time for '{name}', using current time for completion tracking")
+
+        # Backfill _last_start if not set (for startup loading)
         if name not in self._last_start:
             if result.start_time is not None:
                 logger.debug(
@@ -247,7 +260,9 @@ class CommandRuntime:
             history = self._history.get(name)
             if history is not None:
                 history.append(result)
-                limit_str = "unlimited" if config.keep_in_memory == -1 else str(config.keep_in_memory)
+                limit_str = (
+                    "unlimited" if config.keep_in_memory == -1 else str(config.keep_in_memory)
+                )
                 logger.debug(
                     f"Added run {result.run_id[:8]} to '{name}' history "
                     f"(size={len(history)}/{limit_str})"

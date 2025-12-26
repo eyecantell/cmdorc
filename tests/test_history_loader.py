@@ -3,9 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-from pathlib import Path
-
-import pytest
 
 from cmdorc import CommandConfig, CommandOrchestrator, OutputStorageConfig, RunnerConfig
 from cmdorc.command_runtime import CommandRuntime
@@ -75,7 +72,7 @@ class TestHistoryLoader:
         orch1 = CommandOrchestrator(runner1)
 
         # Run 5 commands
-        for i in range(5):
+        for _i in range(5):
             handle = await orch1.run_command("Test")
             await handle.wait()
             await asyncio.sleep(0.05)  # Ensure different mtimes
@@ -263,7 +260,9 @@ duration_str = "1s"
         config = OutputStorageConfig(directory=str(output_dir), keep_history=10)
         runner = RunnerConfig(
             commands=[
-                CommandConfig(name="Test", command='echo "test"', triggers=["test"], keep_in_memory=5)
+                CommandConfig(
+                    name="Test", command='echo "test"', triggers=["test"], keep_in_memory=5
+                )
             ],
             output_storage=config,
         )
@@ -297,7 +296,9 @@ duration_str = "1s"
         config = OutputStorageConfig(directory=str(output_dir), keep_history=10)
         runner = RunnerConfig(
             commands=[
-                CommandConfig(name="Test", command='echo "test"', triggers=["test"], keep_in_memory=5)
+                CommandConfig(
+                    name="Test", command='echo "test"', triggers=["test"], keep_in_memory=5
+                )
             ],
             output_storage=config,
         )

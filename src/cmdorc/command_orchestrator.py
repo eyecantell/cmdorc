@@ -175,10 +175,13 @@ class CommandOrchestrator:
             # Prepare run (merge vars, create ResolvedCommand + RunResult)
             resolved, result = self._prepare_run(config, vars, trigger_event=None)
 
-            # Apply policy (includes debounce check via last_start_time)
+            # Apply policy (includes debounce check based on debounce_mode)
             active_runs = self._runtime.get_active_runs(name)
             last_start_time = self._runtime._last_start.get(name)
-            decision = self._policy.decide(config, active_runs, last_start_time)
+            last_completion_time = self._runtime._last_completion.get(name)
+            decision = self._policy.decide(
+                config, active_runs, last_start_time, last_completion_time
+            )
 
             if not decision.allow:
                 logger.debug(f"Policy denied '{name}': {decision.disallow_reason}")
@@ -397,10 +400,11 @@ class CommandOrchestrator:
             config, None, event_name, trigger_chain=context.history.copy()
         )
 
-        # Apply policy (includes debounce check)
+        # Apply policy (includes debounce check based on debounce_mode)
         active_runs = self._runtime.get_active_runs(config.name)
         last_start_time = self._runtime._last_start.get(config.name)
-        decision = self._policy.decide(config, active_runs, last_start_time)
+        last_completion_time = self._runtime._last_completion.get(config.name)
+        decision = self._policy.decide(config, active_runs, last_start_time, last_completion_time)
 
         if not decision.allow:
             # Policy denied - determine reason
@@ -1010,7 +1014,11 @@ class CommandOrchestrator:
         Enforce output file retention policy for a command.
 
         Deletes oldest run directories if count exceeds keep_history setting.
-        Called before starting new runs to maintain storage limits.
+        Called BEFORE starting new runs to make room for the incoming run.
+
+        IMPORTANT: Deletion happens before the new run starts, so if the run
+        fails to start (e.g., executor error, policy denial), old data is
+        already deleted. This is intentional to prevent exceeding storage limits.
 
         Args:
             command_name: Name of command to clean up

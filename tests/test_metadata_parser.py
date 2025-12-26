@@ -2,11 +2,7 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
-import pytest
-
-from cmdorc import RunResult, RunState
+from cmdorc import RunState
 from cmdorc.metadata_parser import parse_metadata_file
 
 

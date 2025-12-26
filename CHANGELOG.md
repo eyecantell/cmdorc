@@ -5,7 +5,7 @@ All notable changes to cmdorc will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.3.0]
 
 ### Added
 - **Startup History Loading** - Persisted command runs are now automatically loaded on startup
@@ -69,7 +69,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - 8 comprehensive tests covering all scenarios (basic, variables, env, errors, etc.)
 
 - **load_config()** now parses `[output_storage]` section from TOML files
+
+- **Debounce Mode** (`debounce_mode`) - Choose between start-based and completion-based debouncing
+  - `"start"` (default): Prevents starts within debounce_in_ms of last START time (backward compatible)
+  - `"completion"`: Prevents starts within debounce_in_ms of last COMPLETION time (recommended for most users)
+  - Addresses unexpected behavior where long-running commands could retrigger immediately after completion
+  - Configurable per-command via `debounce_mode` field in TOML
+
+- **Loop Detection Warnings** - Commands with `loop_detection=False` now emit warnings
+  - Warns at config load time: "infinite trigger cycles are possible. Use with extreme caution."
+  - Makes dangerous configuration more visible to users
+
 ### Changed
+- **BREAKING: OutputStorageConfig.pattern is no longer configurable** (v0.3.0)
+  - Removed `pattern` field from OutputStorageConfig
+  - Files are always stored as `{command_name}/{run_id}/` for retention enforcement
+  - Custom patterns caused silent retention failures
+  - If pattern is specified in TOML, raises ConfigValidationError with clear message
+  - No migration needed (pattern was rarely customized)
+
 - **BREAKING: CommandConfig.keep_history renamed to keep_in_memory** (v0.3.0)
   - Clarifies that this setting controls in-memory history, not disk persistence
   - Backward compatibility provided via deprecation warning in load_config()
@@ -90,6 +108,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Automatically loads up to `keep_in_memory` runs from disk on startup
   - Only when output_storage is enabled
   - Logs count of loaded runs per command
+
+- **Retention Timing** - Clarified that cleanup happens BEFORE new runs start
+  - Updated `_enforce_output_retention()` docstring with explicit timing warning
+  - Old data deleted even if subsequent run fails to start (intentional to prevent storage overflow)
+  - Prevents exceeding storage limits by making room before execution
+
+- **Completion Time Tracking** - CommandRuntime now tracks both start and completion times
+  - `_last_start`: Used for debounce_mode="start"
+  - `_last_completion`: Used for debounce_mode="completion"
+  - Recorded automatically in `mark_run_complete()`
 
 - **OutputStorageConfig** added to public API exports
 - **LocalSubprocessExecutor** now accepts `output_storage` parameter

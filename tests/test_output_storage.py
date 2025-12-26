@@ -51,7 +51,6 @@ def storage_config(temp_output_dir):
     """OutputStorageConfig with temp directory."""
     return OutputStorageConfig(
         directory=str(temp_output_dir),
-        pattern="{command_name}/{run_id}",
         keep_history=5,
     )
 
@@ -68,7 +67,6 @@ class TestOutputStorageConfig:
         """Default config should be disabled."""
         config = OutputStorageConfig()
         assert config.directory == ".cmdorc/outputs"
-        assert config.pattern == "{command_name}/{run_id}"
         assert config.keep_history == 0
         assert not config.is_enabled
 
@@ -91,21 +89,6 @@ class TestOutputStorageConfig:
         """keep_history < -1 should raise error."""
         with pytest.raises(ConfigValidationError, match="must be -1"):
             OutputStorageConfig(keep_history=-2)
-
-    def test_empty_pattern_invalid(self):
-        """Empty pattern should raise error."""
-        with pytest.raises(ConfigValidationError, match="cannot be empty"):
-            OutputStorageConfig(pattern="")
-
-    def test_invalid_placeholder(self):
-        """Invalid placeholder in pattern should raise error."""
-        with pytest.raises(ConfigValidationError, match="Invalid placeholders"):
-            OutputStorageConfig(pattern="{command_name}/{invalid_var}")
-
-    def test_valid_placeholders(self):
-        """Valid placeholders should work."""
-        config = OutputStorageConfig(pattern="{command_name}/{run_id}")
-        assert config.pattern == "{command_name}/{run_id}"
 
 
 # =====================================================================
@@ -350,9 +333,7 @@ class TestRetentionPolicy:
 
     async def test_retention_policy_enforced(self, temp_output_dir):
         """Old files are deleted when keep_history limit is exceeded."""
-        config = OutputStorageConfig(
-            directory=str(temp_output_dir), pattern="{command_name}/{run_id}", keep_history=3
-        )
+        config = OutputStorageConfig(directory=str(temp_output_dir), keep_history=3)
 
         commands = [CommandConfig(name="Test", command='echo "test"', triggers=["test"])]
         runner_config = RunnerConfig(commands=commands, output_storage=config)
@@ -383,7 +364,6 @@ class TestRetentionPolicy:
         """keep_history=-1 keeps all files (unlimited)."""
         config = OutputStorageConfig(
             directory=str(temp_output_dir),
-            pattern="{command_name}/{run_id}",
             keep_history=-1,  # Unlimited
         )
 
@@ -403,9 +383,7 @@ class TestRetentionPolicy:
 
     async def test_retention_per_command(self, temp_output_dir):
         """Retention is enforced per-command, not globally."""
-        config = OutputStorageConfig(
-            directory=str(temp_output_dir), pattern="{command_name}/{run_id}", keep_history=2
-        )
+        config = OutputStorageConfig(directory=str(temp_output_dir), keep_history=2)
 
         commands = [
             CommandConfig(name="Test1", command='echo "test1"', triggers=["test1"]),
@@ -443,9 +421,7 @@ class TestIntegration:
 
     async def test_full_workflow_with_output_storage(self, temp_output_dir):
         """Complete workflow: run → wait → access files."""
-        config = OutputStorageConfig(
-            directory=str(temp_output_dir), pattern="{command_name}/{run_id}", keep_history=5
-        )
+        config = OutputStorageConfig(directory=str(temp_output_dir), keep_history=5)
 
         commands = [CommandConfig(name="Greet", command='echo "Hello, World!"', triggers=["greet"])]
         runner_config = RunnerConfig(commands=commands, output_storage=config)
@@ -475,9 +451,7 @@ class TestIntegration:
 
     async def test_runhandle_properties_accessible(self, temp_output_dir):
         """RunHandle properties return correct file paths."""
-        config = OutputStorageConfig(
-            directory=str(temp_output_dir), pattern="{command_name}/{run_id}", keep_history=5
-        )
+        config = OutputStorageConfig(directory=str(temp_output_dir), keep_history=5)
 
         commands = [CommandConfig(name="Test", command='echo "test"', triggers=["test"])]
         runner_config = RunnerConfig(commands=commands, output_storage=config)

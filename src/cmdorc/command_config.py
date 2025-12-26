@@ -53,6 +53,11 @@ def validate_trigger(name: str, *, allow_wildcards: bool = False) -> str:
 # ─────────────────────────────────────────────────────────────────────────────
 # Output Storage Configuration
 # ─────────────────────────────────────────────────────────────────────────────
+
+# Output directory pattern (not configurable - retention logic depends on this structure)
+OUTPUT_PATTERN = "{command_name}/{run_id}"
+
+
 @dataclass(frozen=True)
 class OutputStorageConfig:
     """
@@ -72,15 +77,11 @@ class OutputStorageConfig:
     """
     Base directory for output files. Can be absolute or relative.
     Relative paths are resolved from the config file location.
-    Default: .cmdorc/outputs
-    """
 
-    pattern: str = "{command_name}/{run_id}"
-    """
-    Directory structure pattern for organizing output files.
-    Available variables: {command_name}, {run_id}
-    Files are stored as: directory/pattern/metadata.toml and directory/pattern/output.txt
-    Default: {command_name}/{run_id}
+    Files are organized as: directory/{command_name}/{run_id}/metadata.toml
+    This structure is required for retention enforcement to work correctly.
+
+    Default: .cmdorc/outputs
     """
 
     keep_history: int = 0
@@ -97,23 +98,6 @@ class OutputStorageConfig:
             logger.warning("Invalid output_storage config: keep_history must be >= -1")
             raise ConfigValidationError(
                 "output_storage.keep_history must be -1 (unlimited), 0 (disabled), or positive"
-            )
-
-        if not self.pattern.strip():
-            logger.warning("Invalid output_storage config: pattern cannot be empty")
-            raise ConfigValidationError("output_storage.pattern cannot be empty")
-
-        # Validate pattern contains only valid placeholders
-        valid_placeholders = {"{command_name}", "{run_id}"}
-        placeholders = set(re.findall(r"\{[^}]+\}", self.pattern))
-        invalid = placeholders - valid_placeholders
-        if invalid:
-            logger.warning(
-                f"Invalid output_storage config: Invalid placeholders {invalid} in pattern"
-            )
-            raise ConfigValidationError(
-                f"Invalid placeholders in output_storage.pattern: {invalid}. "
-                f"Valid placeholders: {valid_placeholders}"
             )
 
     @property
@@ -193,10 +177,26 @@ class CommandConfig:
 
     debounce_in_ms: int = 0
     """
-    Optional: Minimum delay between runs of this command.
-    If a run completes at time T, a new run cannot start until T + debounce_in_ms has passed.
-    This is enforced by orchestrator before ConcurrencyPolicy is applied.
+    Minimum time interval (in milliseconds) between command runs.
+
+    Prevents rapid retriggering by enforcing a delay. The timing reference depends on debounce_mode.
+    Enforced by orchestrator before ConcurrencyPolicy is applied.
     0 = disabled (default).
+    """
+
+    debounce_mode: Literal["start", "completion"] = "start"
+    """
+    Controls how debounce timing is calculated:
+
+    - "start" (default): Prevents starts within debounce_in_ms of the last START time.
+      For long-running commands, this allows immediate retriggering after completion.
+      Example: 10s command with 1s debounce → can retrigger immediately after it finishes.
+
+    - "completion": Prevents starts within debounce_in_ms of the last COMPLETION time.
+      Ensures minimum gap between consecutive runs regardless of duration.
+      Example: 10s command with 1s debounce → must wait 1s after completion before retriggering.
+
+    Note: "start" is default for backward compatibility, but "completion" matches most users' expectations.
     """
 
     loop_detection: bool = True
@@ -237,7 +237,21 @@ class CommandConfig:
                 f"Invalid config for '{self.name}': keep_in_memory must be -1 (unlimited), 0, or positive"
             )
             raise ConfigValidationError(
-                f"keep_in_memory must be -1 (unlimited), 0 (disabled), or positive"
+                "keep_in_memory must be -1 (unlimited), 0 (disabled), or positive"
+            )
+
+        # ────── Validate debounce_mode ──────
+        if self.debounce_mode not in ("start", "completion"):
+            logger.warning(
+                f"Invalid config for '{self.name}': debounce_mode must be 'start' or 'completion'"
+            )
+            raise ConfigValidationError("debounce_mode must be 'start' or 'completion'")
+
+        # ────── Warn about loop_detection=False ──────
+        if not self.loop_detection:
+            logger.warning(
+                f"Command '{self.name}' has loop_detection=False: "
+                f"infinite trigger cycles are possible. Use with extreme caution."
             )
 
         # ────── Validate triggers ──────

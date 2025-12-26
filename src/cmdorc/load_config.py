@@ -42,6 +42,13 @@ def load_config(path: str | Path | BinaryIO | TextIO) -> RunnerConfig:
     # ────── Parse [output_storage] section ──────
     output_storage_dict = data.get("output_storage", {}).copy()
 
+    # Check for removed pattern field
+    if "pattern" in output_storage_dict:
+        raise ConfigValidationError(
+            "output_storage.pattern is no longer configurable (removed in v0.3.0). "
+            "Files are always stored as {command_name}/{run_id}/ for retention enforcement."
+        )
+
     # Resolve relative directory path relative to config file location
     if "directory" in output_storage_dict and output_storage_dict["directory"] is not None:
         dir_path = Path(output_storage_dict["directory"])

@@ -1,6 +1,6 @@
 [project]
 name = "cmdorc"
-version = "0.2.1"
+version = "0.3.0"
 description = "Async-first, trigger-driven shell command orchestrator for TUIs and agents"
 readme = "README.md"
 authors = [{ name = "eyecantell", email = "paul@pneuma.solutions" }]

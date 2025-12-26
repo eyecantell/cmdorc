@@ -36,13 +36,14 @@ class ConcurrencyPolicy:
         config: CommandConfig,
         active_runs: list[RunResult],
         last_start_time: datetime | None = None,
+        last_completion_time: datetime | None = None,
     ) -> NewRunDecision:
         """
         Decide if a new run should start, considering debounce, max_concurrent, and on_retrigger.
 
         This is a pure function: deterministic based on inputs, no side effects.
 
-        Debounce is checked first (from last start time, regardless of outcome).
+        Debounce is checked first (timing based on config.debounce_mode).
         If debounced, immediately deny without considering concurrency.
 
         Then, evaluate concurrency:
@@ -55,6 +56,7 @@ class ConcurrencyPolicy:
             config: The command configuration with policy settings.
             active_runs: List of currently RUNNING RunResults (filtered by caller).
             last_start_time: Timestamp of the last run start, or None if never run.
+            last_completion_time: Timestamp of the last run completion, or None if never completed.
 
         Returns:
             NewRunDecision indicating if allowed and which runs to cancel.
@@ -62,19 +64,35 @@ class ConcurrencyPolicy:
         Raises:
             ValueError: If on_retrigger is invalid.
         """
-        # Check debounce first: prevent rapid starts regardless of concurrency
-        if config.debounce_in_ms > 0 and last_start_time is not None:
-            elapsed_ms = int((datetime.now() - last_start_time).total_seconds() * 1000)
-            if elapsed_ms < config.debounce_in_ms:
-                logger.debug(
-                    f"Policy for '{config.name}': debounced ({elapsed_ms:.0f}ms < {config.debounce_in_ms}ms)"
+        # Check debounce first: prevent rapid retriggering based on mode
+        if config.debounce_in_ms > 0:
+            # Select timestamp based on debounce_mode
+            reference_time = None
+            if config.debounce_mode == "start":
+                reference_time = last_start_time
+            elif config.debounce_mode == "completion":
+                reference_time = last_completion_time
+            else:
+                # Should never happen due to validation, but handle gracefully
+                logger.warning(
+                    f"Invalid debounce_mode '{config.debounce_mode}' for '{config.name}', "
+                    f"defaulting to 'start'"
                 )
-                return NewRunDecision(
-                    allow=False,
-                    disallow_reason="debounce",
-                    elapsed_ms=elapsed_ms,
-                    runs_to_cancel=[],
-                )
+                reference_time = last_start_time
+
+            if reference_time is not None:
+                elapsed_ms = int((datetime.now() - reference_time).total_seconds() * 1000)
+                if elapsed_ms < config.debounce_in_ms:
+                    logger.debug(
+                        f"Policy for '{config.name}': debounced in '{config.debounce_mode}' mode "
+                        f"({elapsed_ms:.0f}ms < {config.debounce_in_ms}ms)"
+                    )
+                    return NewRunDecision(
+                        allow=False,
+                        disallow_reason="debounce",
+                        elapsed_ms=elapsed_ms,
+                        runs_to_cancel=[],
+                    )
 
         active_count = len(active_runs)
 
