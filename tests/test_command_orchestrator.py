@@ -16,6 +16,7 @@ Test categories:
 from __future__ import annotations
 
 import asyncio
+import logging
 from datetime import datetime, timedelta
 
 import pytest
@@ -33,6 +34,9 @@ from cmdorc import (
     TriggerContext,
     TriggerCycleError,
 )
+
+logging.getLogger("cmdorc").setLevel(logging.DEBUG)
+logger = logging.getLogger(__name__)
 
 # ========================================================================
 # Fixtures
@@ -732,6 +736,91 @@ class TestQueries:
         assert "Test" in commands
         assert "Lint" in commands
         assert "Build" in commands
+
+    def test_get_trigger_graph_basic(self, orchestrator):
+        """get_trigger_graph() returns triggers from existing commands."""
+        # Default orchestrator has Test command with triggers=["test_trigger"]
+        graph = orchestrator.get_trigger_graph()
+        logger.debug(f"Trigger graph: {graph}")
+        print(f"Trigger graph: {graph}")
+        assert "test_trigger" in graph
+        assert "Test" in graph["test_trigger"]
+
+    def test_get_trigger_graph_single_trigger(self, orchestrator):
+        """get_trigger_graph() maps trigger to command."""
+        config = CommandConfig(
+            name="Lint",
+            command="ruff check .",
+            triggers=["file_saved"],
+        )
+        orchestrator.add_command(config)
+
+        graph = orchestrator.get_trigger_graph()
+
+        assert "file_saved" in graph
+        assert "Lint" in graph["file_saved"]
+
+    def test_get_trigger_graph_multiple_commands_same_trigger(self, orchestrator):
+        """get_trigger_graph() lists all commands for shared trigger."""
+        config1 = CommandConfig(
+            name="Lint",
+            command="ruff check .",
+            triggers=["changes_applied"],
+        )
+        config2 = CommandConfig(
+            name="Format",
+            command="ruff format .",
+            triggers=["changes_applied"],
+        )
+        orchestrator.add_command(config1)
+        orchestrator.add_command(config2)
+
+        graph = orchestrator.get_trigger_graph()
+
+        assert "changes_applied" in graph
+        assert len(graph["changes_applied"]) == 2
+        assert "Lint" in graph["changes_applied"]
+        assert "Format" in graph["changes_applied"]
+
+    def test_get_trigger_graph_lifecycle_triggers(self, orchestrator):
+        """get_trigger_graph() includes lifecycle auto-event triggers."""
+        config1 = CommandConfig(
+            name="Lint",
+            command="ruff check .",
+            triggers=["file_saved"],
+        )
+        config2 = CommandConfig(
+            name="Tests",
+            command="pytest",
+            triggers=["command_success:Lint"],
+        )
+        orchestrator.add_command(config1)
+        orchestrator.add_command(config2)
+
+        graph = orchestrator.get_trigger_graph()
+
+        assert "file_saved" in graph
+        assert "command_success:Lint" in graph
+        assert "Lint" in graph["file_saved"]
+        assert "Tests" in graph["command_success:Lint"]
+
+    def test_get_trigger_graph_command_with_multiple_triggers(self, orchestrator):
+        """get_trigger_graph() includes all triggers for a command."""
+        config = CommandConfig(
+            name="Deploy",
+            command="deploy.sh",
+            triggers=["manual_deploy", "ci_deploy", "command_success:Tests"],
+        )
+        orchestrator.add_command(config)
+
+        graph = orchestrator.get_trigger_graph()
+
+        assert "manual_deploy" in graph
+        assert "ci_deploy" in graph
+        assert "command_success:Tests" in graph
+        assert all(
+            "Deploy" in graph[t] for t in ["manual_deploy", "ci_deploy", "command_success:Tests"]
+        )
 
     async def test_get_status(self, orchestrator):
         """get_status() returns CommandStatus with state and counts."""

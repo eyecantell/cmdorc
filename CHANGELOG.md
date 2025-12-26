@@ -5,6 +5,25 @@ All notable changes to cmdorc will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **`get_trigger_graph()` method** - Returns a mapping of triggers to commands they activate
+  - Useful for debugging, visualization, and understanding trigger relationships
+  - Returns `dict[str, list[str]]` mapping trigger names to command names
+  - 5 new tests for trigger graph functionality
+
+### Changed
+- **`CommandRuntime.replace_command()` renamed to `update_command()`** - Consistent naming with `CommandOrchestrator.update_command()`
+- **Debounce timing now accessed via public methods** - `get_last_start_time()` and `get_last_completion_time()` replace direct access to private attributes
+
+### Fixed
+- **Memory leak in `remove_command()`** - Now properly cleans up `_last_completion` tracking when commands are removed
+- **Incorrect `ConcurrencyLimitError` construction** - Now uses proper keyword arguments matching exception signature
+
+### Removed
+- **Dead code: `CommandRuntime.check_debounce()` method** - Debounce logic is handled by `ConcurrencyPolicy.decide()`
+
 ## [0.3.0]
 
 ### Added

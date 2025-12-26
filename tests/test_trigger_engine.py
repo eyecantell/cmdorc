@@ -240,6 +240,49 @@ class TestCallbackRegistration:
 
         assert engine.unregister_callback("nonexistent", callback) is False
 
+    def test_unregister_wildcard_callback(self, engine: TriggerEngine):
+        """Wildcard callbacks should be unregisterable."""
+
+        def callback():
+            pass
+
+        engine.register_callback("command_*", callback)
+        assert engine.unregister_callback("command_*", callback) is True
+        callbacks = engine.get_matching_callbacks("command_success")
+        assert len(callbacks) == 0
+
+    def test_unregister_nonexistent_wildcard_callback(self, engine: TriggerEngine):
+        """Unregistering non-existent wildcard callback should return False."""
+
+        def callback():
+            pass
+
+        def other_callback():
+            pass
+
+        engine.register_callback("event_*", callback)
+        # Try to unregister a different callback
+        assert engine.unregister_callback("event_*", other_callback) is False
+        # Original callback should still be registered
+        callbacks = engine.get_matching_callbacks("event_test")
+        assert len(callbacks) == 1
+
+    def test_unregister_callback_from_existing_pattern_wrong_callback(self, engine: TriggerEngine):
+        """Unregistering wrong callback from existing exact pattern should return False."""
+
+        def callback1():
+            pass
+
+        def callback2():
+            pass
+
+        engine.register_callback("event", callback1)
+        # Try to unregister callback2 which was never registered
+        assert engine.unregister_callback("event", callback2) is False
+        # Original callback should still be there
+        callbacks = engine.get_matching_callbacks("event")
+        assert len(callbacks) == 1
+
     def test_lifecycle_callback_registration(self, engine: TriggerEngine):
         """Lifecycle callbacks should be registerable."""
 

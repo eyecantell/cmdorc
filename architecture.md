@@ -509,6 +509,7 @@ class CommandRuntime:
 ```python
 def register_command(config: CommandConfig) -> None
 def remove_command(name: str) -> None
+def update_command(config: CommandConfig) -> None
 def get_command(name: str) -> CommandConfig | None
 
 def add_live_run(result: RunResult) -> None
@@ -521,54 +522,45 @@ def get_history(name: str, limit: int = 10) -> list[RunResult]
 def get_status(name: str) -> CommandStatus
 def list_commands() -> list[str]
 
-def check_debounce(name: str, debounce_ms: int) -> bool
+# Debounce timing access (used by ConcurrencyPolicy)
+def get_last_start_time(name: str) -> datetime | None
+def get_last_completion_time(name: str) -> datetime | None
 ```
 
 ### Debounce Handling
 
-**Decision:** Debounce is checked in `CommandOrchestrator` **before** calling `ConcurrencyPolicy.decide()`.
+**Decision:** Debounce is handled by `ConcurrencyPolicy.decide()` which receives timing data from `CommandRuntime`.
 
-**Rationale:**
-- `ConcurrencyPolicy` is stateless - it cannot track timestamps
-- Debounce is a timing constraint, not a concurrency policy
-- `CommandRuntime` tracks start timestamps via explicit `_last_start` dict
-- Orchestrator queries runtime before applying policy
-
-**Alternative considered:** Using `latest_result.end_time` instead of separate timestamp tracking.
-**Trade-off:** Current approach is more explicit and flexible (e.g., could debounce differently for success vs failure states in future). If simplicity is preferred, can switch to `latest_result.end_time`.
+**Architecture:**
+- `CommandRuntime` tracks `_last_start` and `_last_completion` timestamps
+- `CommandRuntime` exposes `get_last_start_time()` and `get_last_completion_time()` public methods
+- `ConcurrencyPolicy.decide()` receives these timestamps and applies debounce logic
+- Supports both `debounce_mode="start"` and `debounce_mode="completion"`
 
 **Flow:**
 ```python
 async def run_command(self, name: str, vars: dict | None = None) -> RunHandle:
     config = self._runtime.get_command(name)
-    
-    # Check debounce FIRST (before policy)
-    if config.debounce_in_ms > 0:
-        if not self._runtime.check_debounce(name, config.debounce_in_ms):
-            logger.debug(f"Command '{name}' is in debounce window, ignoring")
-            # Return handle to most recent run? Or raise? TBD
-            raise DebounceError(f"Command '{name}' is debounced")
-    
-    # Then apply policy
+
+    # Get timing data from runtime
     active_runs = self._runtime.get_active_runs(name)
-    decision = self._policy.decide(config, active_runs)
+    last_start_time = self._runtime.get_last_start_time(name)
+    last_completion_time = self._runtime.get_last_completion_time(name)
+
+    # Policy handles both concurrency and debounce
+    decision = self._policy.decide(config, active_runs, last_start_time, last_completion_time)
+
+    if not decision.allow:
+        if decision.disallow_reason == "debounce":
+            raise DebounceError(name, config.debounce_in_ms, decision.elapsed_ms)
+        else:
+            raise ConcurrencyLimitError(...)
     # ... rest of execution flow
 ```
 
-**CommandRuntime responsibilities:**
-```python
-def check_debounce(self, name: str, debounce_ms: int) -> bool:
-    """Return True if enough time has passed since last start."""
-    last = self._last_start.get(name)
-    if last is None:
-        return True  # Never run before
-
-    elapsed_ms = (datetime.now() - last).total_seconds() * 1000
-    return elapsed_ms >= debounce_ms
-
-# Note: Debounce timestamps are recorded in add_live_run() when the run starts,
-# not at completion. This tracks START times, not completion times.
-```
+**Timing recorded in CommandRuntime:**
+- `_last_start[name]` updated in `add_live_run()` when run starts
+- `_last_completion[name]` updated in `mark_run_complete()` when run finishes
 
 ```python
 @dataclass(frozen=True)
@@ -1080,14 +1072,17 @@ class MockExecutor(CommandExecutor):
 ### 📊 Code Statistics
 
 - **Total lines of production code:** ~2,900
-- **Total lines of test code:** ~2,500
-- **Test coverage:** 95% overall (all completed components have comprehensive tests)
-  - `run_handle.py`: 100% coverage (71 statements, 33 tests)
-  - `exceptions.py`: 100% coverage (22 statements, 40 tests)
-  - `runtime_vars.py`: 100% coverage (58 statements, 30 tests)
-  - `load_config.py`: 92% coverage
-- **Total tests:** 220 tests passing
-- **Components completed:** 8 of 8 core components (Orchestrator+TriggerEngine are next)
+- **Total lines of test code:** ~3,000
+- **Test coverage:** 93% overall
+  - `command_runtime.py`: 100% coverage
+  - `exceptions.py`: 100% coverage
+  - `runtime_vars.py`: 100% coverage
+  - `types.py`: 100% coverage
+  - `trigger_engine.py`: 97% coverage
+  - `run_handle.py`: 96% coverage
+  - `run_result.py`: 95% coverage
+- **Total tests:** 429 tests passing
+- **All core components:** Production ready
 
 ---
 

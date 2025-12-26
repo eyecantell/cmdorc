@@ -262,6 +262,31 @@ class TestTriggerCycleError:
         assert error.event_name == "event_start"
         assert error.cycle_path == ["event_b", "event_c"]
 
+    def test_cycle_with_pre_cycle_path(self):
+        """Test cycle detection where event_name appears mid-path (has pre_cycle)."""
+        # Path: a -> b -> c -> b (cycle starts at 'b', index 1)
+        cycle_path = ["a", "b", "c"]
+        error = TriggerCycleError("b", cycle_path)
+
+        assert error.cycle_point == 1
+        msg = str(error)
+        # Should have "Trigger chain: a" and "Cycle: b -> c -> b"
+        assert "a" in msg
+        assert "b" in msg
+        assert "c" in msg
+
+    def test_cycle_without_pre_cycle_path(self):
+        """Test cycle where event_name is at start of path (no pre_cycle)."""
+        # Path: a -> b -> a (cycle starts at 'a', index 0)
+        cycle_path = ["a", "b"]
+        error = TriggerCycleError("a", cycle_path)
+
+        assert error.cycle_point == 0
+        msg = str(error)
+        # No pre_cycle, just the cycle part
+        assert "a" in msg
+        assert "b" in msg
+
 
 class TestExceptionHierarchy:
     """Tests for exception class hierarchy and relationships."""

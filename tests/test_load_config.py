@@ -190,3 +190,126 @@ triggers = []
     config = load_config(config_file)
     assert len(config.commands) == 1
     assert config.commands[0].name == "Path"
+
+
+# ================================================================
+# CommandConfig Validation Tests
+# ================================================================
+
+
+def test_empty_trigger_name_in_list():
+    """Empty trigger name in triggers list should fail validation."""
+    toml = io.BytesIO(
+        b"""
+[[command]]
+name = "Test"
+command = "echo"
+triggers = ["valid", ""]
+"""
+    )
+    with pytest.raises(ConfigValidationError, match="Trigger name cannot be empty"):
+        load_config(toml)
+
+
+def test_negative_max_concurrent():
+    """Negative max_concurrent should fail validation."""
+    toml = io.BytesIO(
+        b"""
+[[command]]
+name = "Test"
+command = "echo"
+triggers = []
+max_concurrent = -1
+"""
+    )
+    with pytest.raises(ConfigValidationError, match="max_concurrent cannot be negative"):
+        load_config(toml)
+
+
+def test_zero_timeout_secs():
+    """Zero timeout_secs should fail validation."""
+    toml = io.BytesIO(
+        b"""
+[[command]]
+name = "Test"
+command = "echo"
+triggers = []
+timeout_secs = 0
+"""
+    )
+    with pytest.raises(ConfigValidationError, match="timeout_secs must be positive"):
+        load_config(toml)
+
+
+def test_negative_timeout_secs():
+    """Negative timeout_secs should fail validation."""
+    toml = io.BytesIO(
+        b"""
+[[command]]
+name = "Test"
+command = "echo"
+triggers = []
+timeout_secs = -10
+"""
+    )
+    with pytest.raises(ConfigValidationError, match="timeout_secs must be positive"):
+        load_config(toml)
+
+
+def test_invalid_on_retrigger_value():
+    """Invalid on_retrigger value should fail validation."""
+    toml = io.BytesIO(
+        b"""
+[[command]]
+name = "Test"
+command = "echo"
+triggers = []
+on_retrigger = "restart"
+"""
+    )
+    with pytest.raises(ConfigValidationError, match="on_retrigger must be"):
+        load_config(toml)
+
+
+def test_invalid_keep_in_memory():
+    """keep_in_memory less than -1 should fail validation."""
+    toml = io.BytesIO(
+        b"""
+[[command]]
+name = "Test"
+command = "echo"
+triggers = []
+keep_in_memory = -2
+"""
+    )
+    with pytest.raises(ConfigValidationError, match="keep_in_memory must be"):
+        load_config(toml)
+
+
+def test_invalid_debounce_mode():
+    """Invalid debounce_mode should fail validation."""
+    toml = io.BytesIO(
+        b"""
+[[command]]
+name = "Test"
+command = "echo"
+triggers = []
+debounce_mode = "invalid"
+"""
+    )
+    with pytest.raises(ConfigValidationError, match="debounce_mode must be"):
+        load_config(toml)
+
+
+def test_whitespace_only_command():
+    """Command with only whitespace should fail validation."""
+    toml = io.BytesIO(
+        b"""
+[[command]]
+name = "Test"
+command = "   "
+triggers = []
+"""
+    )
+    with pytest.raises(ConfigValidationError, match="Command.*cannot be empty"):
+        load_config(toml)

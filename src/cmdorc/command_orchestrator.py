@@ -177,8 +177,8 @@ class CommandOrchestrator:
 
             # Apply policy (includes debounce check based on debounce_mode)
             active_runs = self._runtime.get_active_runs(name)
-            last_start_time = self._runtime._last_start.get(name)
-            last_completion_time = self._runtime._last_completion.get(name)
+            last_start_time = self._runtime.get_last_start_time(name)
+            last_completion_time = self._runtime.get_last_completion_time(name)
             decision = self._policy.decide(
                 config, active_runs, last_start_time, last_completion_time
             )
@@ -402,8 +402,8 @@ class CommandOrchestrator:
 
         # Apply policy (includes debounce check based on debounce_mode)
         active_runs = self._runtime.get_active_runs(config.name)
-        last_start_time = self._runtime._last_start.get(config.name)
-        last_completion_time = self._runtime._last_completion.get(config.name)
+        last_start_time = self._runtime.get_last_start_time(config.name)
+        last_completion_time = self._runtime.get_last_completion_time(config.name)
         decision = self._policy.decide(config, active_runs, last_start_time, last_completion_time)
 
         if not decision.allow:
@@ -415,7 +415,10 @@ class CommandOrchestrator:
                 raise DebounceError(config.name, config.debounce_in_ms, elapsed_ms)
             else:
                 raise ConcurrencyLimitError(
-                    f"Command '{config.name}' at limit from trigger '{event_name}'"
+                    command_name=config.name,
+                    active_count=len(active_runs),
+                    max_concurrent=config.max_concurrent,
+                    policy=config.on_retrigger,
                 )
 
         # Cancel runs if needed
@@ -767,7 +770,7 @@ class CommandOrchestrator:
         Raises:
             CommandNotFoundError: If command not registered
         """
-        self._runtime.replace_command(config)
+        self._runtime.update_command(config)
         logger.debug(f"Updated command '{config.name}'")
 
     def reload_all_commands(self, configs: list[CommandConfig]) -> None:
@@ -920,6 +923,36 @@ class CommandOrchestrator:
             List of all active RunHandles
         """
         return [h for h in self._handles.values() if not h.is_finalized]
+
+    def get_trigger_graph(self) -> dict[str, list[str]]:
+        """
+        Get a mapping of triggers to the commands they activate.
+
+        Returns:
+            Dict mapping trigger names to lists of command names.
+            Includes both exact triggers and auto-event triggers
+            (command_started:*, command_success:*, etc.)
+
+        Example:
+            {
+                "changes_applied": ["Lint", "Format"],
+                "command_success:Lint": ["Tests"],
+                "deploy": ["Deploy"],
+            }
+        """
+        trigger_map: dict[str, list[str]] = {}
+
+        for cmd_name in self._runtime.list_commands():
+            config = self._runtime.get_command(cmd_name)
+            if config is None:
+                continue
+
+            for trigger in config.triggers:
+                if trigger not in trigger_map:
+                    trigger_map[trigger] = []
+                trigger_map[trigger].append(cmd_name)
+
+        return trigger_map
 
     async def _register_handle(self, handle: RunHandle) -> None:
         """

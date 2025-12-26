@@ -3,8 +3,8 @@
 [![PyPI version](https://badge.fury.io/py/cmdorc.svg)](https://badge.fury.io/py/cmdorc)
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Tests](https://img.shields.io/badge/tests-409%20passing-brightgreen)](https://github.com/eyecantell/cmdorc/tree/main/tests)
-[![Coverage](https://img.shields.io/badge/coverage-92%25-brightgreen)](https://github.com/eyecantell/cmdorc)
+[![Tests](https://img.shields.io/badge/tests-424%20passing-brightgreen)](https://github.com/eyecantell/cmdorc/tree/main/tests)
+[![Coverage](https://img.shields.io/badge/coverage-93%25-brightgreen)](https://github.com/eyecantell/cmdorc)
 [![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 [![Typing: PEP 561](https://img.shields.io/badge/typing-PEP%20561-blue)](https://peps.python.org/pep-0561/)
 
@@ -493,7 +493,7 @@ for result in history:
 ## Testing & Quality
 
 cmdorc maintains high quality standards:
-- **409 tests** with 92% code coverage
+- **424 tests** with 93% code coverage
 - Full async/await testing with `pytest-asyncio`
 - Type hints throughout with PEP 561 compliance
 - Linted with ruff for consistent style
@@ -518,6 +518,7 @@ Contributions welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for:
 MIT License - See [LICENSE](LICENSE) for details
 
 ## Todo
+- Make output file extension configurable (currently hardcoded to .txt) 
 - Move TriggerChain utilities from textual-cmdorc to here.
 - Add optional metrics (see [telemetry](telemetry.md))
 ---

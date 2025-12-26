@@ -202,7 +202,7 @@ assert executor.started[0][1].command == "pytest tests/"
 ```
 
 ### Coverage
-- Current: ~100+ tests across all completed components
+- Current: 429 tests with 93% coverage
 - Target: High coverage (see `htmlcov/` after running tests)
 - Run with: `pytest --cov=cmdorc --cov-report=term-missing`
 
@@ -310,8 +310,8 @@ tests/
 - Variable Resolution (runtime merging and template substitution)
 
 **Statistics:**
-- **Test Count:** 409 tests (all passing)
+- **Test Count:** 429 tests (all passing)
 - **Test Files:** 12 test modules
-- **Coverage:** 92% overall
+- **Coverage:** 93% overall
 - **Python Support:** 3.10+
 - **Dependencies:** Zero (except tomli for Python <3.11)

@@ -105,12 +105,13 @@ class CommandRuntime:
         self._latest_result.pop(name, None)
         self._history.pop(name, None)
         self._last_start.pop(name, None)
+        self._last_completion.pop(name, None)
 
         logger.debug(f"Removed command '{name}' and all associated state")
 
-    def replace_command(self, config: CommandConfig) -> None:
+    def update_command(self, config: CommandConfig) -> None:
         """
-        Replace an existing command's configuration.
+        Update an existing command's configuration.
 
         Active runs continue with old config.
         History is preserved if keep_history is compatible.
@@ -148,7 +149,7 @@ class CommandRuntime:
                     f"{old_config.keep_in_memory} -> {config.keep_in_memory}"
                 )
 
-        logger.debug(f"Finished replace of config for '{config.name}'")
+        logger.debug(f"Updated config for '{config.name}'")
 
     def get_command(self, name: str) -> CommandConfig | None:
         """Get command configuration by name."""
@@ -386,45 +387,36 @@ class CommandRuntime:
         )
 
     # ================================================================
-    # Debounce Support
+    # Debounce Timing Access
     # ================================================================
 
-    def check_debounce(self, name: str, debounce_ms: int) -> bool:
+    def get_last_start_time(self, name: str) -> datetime.datetime | None:
         """
-        Check if enough time has passed since last START.
+        Get the last start time for a command.
 
-        This prevents rapid successive starts (e.g., button mashing),
-        even while a command is still running.
+        Used by ConcurrencyPolicy for debounce_mode="start" calculations.
 
         Args:
             name: Command name
-            debounce_ms: Minimum milliseconds since last start
 
         Returns:
-            True if run is allowed (debounce window has passed or never run)
-            False if still in debounce window
-
-        Raises:
-            KeyError if command not registered
+            Last start timestamp, or None if never started
         """
-        self.verify_registered(name)
-        last = self._last_start.get(name)
-        if last is None:
-            return True  # Never started before, allow
+        return self._last_start.get(name)
 
-        now = datetime.datetime.now()
-        elapsed_ms = (now - last).total_seconds() * 1000
+    def get_last_completion_time(self, name: str) -> datetime.datetime | None:
+        """
+        Get the last completion time for a command.
 
-        allowed = elapsed_ms >= debounce_ms
+        Used by ConcurrencyPolicy for debounce_mode="completion" calculations.
 
-        if not allowed:
-            remaining_ms = debounce_ms - elapsed_ms
-            logger.debug(
-                f"Command '{name}' in debounce window "
-                f"(elapsed={elapsed_ms:.0f}ms, remaining={remaining_ms:.0f}ms)"
-            )
+        Args:
+            name: Command name
 
-        return allowed
+        Returns:
+            Last completion timestamp, or None if never completed
+        """
+        return self._last_completion.get(name)
 
     # ================================================================
     # Debugging & Introspection

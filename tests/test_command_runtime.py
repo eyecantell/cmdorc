@@ -10,8 +10,8 @@ Tests all state management operations:
 - Status queries
 """
 
+import datetime
 import logging
-import time
 
 import pytest
 
@@ -116,34 +116,34 @@ def test_remove_nonexistent_raises(runtime):
         runtime.remove_command("nonexistent")
 
 
-def test_replace_command(runtime):
-    """Test command configuration replacement."""
+def test_update_command(runtime):
+    """Test command configuration update."""
     config1 = CommandConfig(
-        name="replace_test",
+        name="update_test",
         command="echo v1",
         triggers=["trigger1"],
         keep_in_memory=1,
     )
     config2 = CommandConfig(
-        name="replace_test",
+        name="update_test",
         command="echo v2",
         triggers=["trigger2"],
         keep_in_memory=3,
     )
 
     runtime.register_command(config1)
-    runtime.replace_command(config2)
+    runtime.update_command(config2)
 
-    retrieved = runtime.get_command("replace_test")
+    retrieved = runtime.get_command("update_test")
     assert retrieved.command == "echo v2"
     assert retrieved.triggers == ["trigger2"]
     assert retrieved.keep_in_memory == 3
 
 
-def test_replace_nonexistent_raises(runtime, simple_config):
-    """Test that replacing non-existent command raises KeyError."""
+def test_update_nonexistent_raises(runtime, simple_config):
+    """Test that updating non-existent command raises KeyError."""
     with pytest.raises(CommandNotFoundError, match="not registered"):
-        runtime.replace_command(simple_config)
+        runtime.update_command(simple_config)
 
 
 def test_list_commands(runtime):
@@ -483,70 +483,60 @@ def test_get_status_nonexistent_raises(runtime):
 
 
 # ================================================================
-# Debounce Tests
+# Debounce Timing Access Tests
 # ================================================================
 
 
-def test_check_debounce_never_run(runtime, simple_config):
-    """Test debounce check for command that has never run."""
+def test_get_last_start_time_never_run(runtime, simple_config):
+    """Test getting last start time for command that has never run."""
     runtime.register_command(simple_config)
 
-    # Should allow (no previous completion)
-    assert runtime.check_debounce(simple_config.name, 1000) is True
+    # Should return None (no previous start)
+    assert runtime.get_last_start_time(simple_config.name) is None
 
 
-def test_check_debounce_allowed(runtime, simple_config):
-    """Test debounce allows run after sufficient time."""
-    runtime.register_command(simple_config)
-
-    run = RunResult(command_name=simple_config.name, run_id="run-1")
-
-    # Record completion
-    runtime.mark_run_complete(run)
-
-    # Wait longer than debounce period
-    time.sleep(0.01)  # 10ms
-
-    # Should allow (9ms < 10ms elapsed)
-    assert runtime.check_debounce(simple_config.name, 5) is True
-
-
-def test_check_debounce_blocked(runtime, simple_config):
-    """Test debounce blocks run within window."""
+def test_get_last_start_time_after_run(runtime, simple_config):
+    """Test getting last start time after a run starts."""
     runtime.register_command(simple_config)
 
     run = RunResult(command_name=simple_config.name, run_id="run-1")
+    runtime.add_live_run(run)
 
-    # Record completion
-    runtime.mark_run_complete(run)
+    # Should have a start time
+    start_time = runtime.get_last_start_time(simple_config.name)
+    assert start_time is not None
+    assert isinstance(start_time, datetime.datetime)
 
-    # Check immediately (should block)
-    assert runtime.check_debounce(simple_config.name, 1000) is False
+
+def test_get_last_completion_time_never_completed(runtime, simple_config):
+    """Test getting last completion time for command that never completed."""
+    runtime.register_command(simple_config)
+
+    # Should return None (no previous completion)
+    assert runtime.get_last_completion_time(simple_config.name) is None
 
 
-def test_check_debounce_boundary(runtime, simple_config):
-    """Test debounce behavior at exact boundary."""
+def test_get_last_completion_time_after_completion(runtime, simple_config):
+    """Test getting last completion time after a run completes."""
     runtime.register_command(simple_config)
 
     run = RunResult(command_name=simple_config.name, run_id="run-1")
-
-    # Record completion
+    run.mark_success()
     runtime.mark_run_complete(run)
 
-    # Wait exactly the debounce period
-    time.sleep(0.05)  # 50ms
-
-    # Should allow at >= boundary
-    assert runtime.check_debounce(simple_config.name, 50) is True
+    # Should have a completion time
+    completion_time = runtime.get_last_completion_time(simple_config.name)
+    assert completion_time is not None
+    assert isinstance(completion_time, datetime.datetime)
 
 
 # ================================================================
-# Config Replacement with History Tests
+# Config Update with History Tests
 # ================================================================
 
 
-def test_replace_command_history_disabled(runtime, simple_config):
-    """Test replacing config that disables history."""
+def test_update_command_history_disabled(runtime, simple_config):
+    """Test updating config that disables history."""
     config1 = CommandConfig(
         name=simple_config.name,
         command="echo v1",
@@ -568,15 +558,15 @@ def test_replace_command_history_disabled(runtime, simple_config):
         run.mark_success()
         runtime.mark_run_complete(run)
 
-    # Replace with history disabled
-    runtime.replace_command(config2)
+    # Update with history disabled
+    runtime.update_command(config2)
 
     # History should be empty now
     assert runtime.get_history(simple_config.name) == []
 
 
-def test_replace_command_history_reduced(runtime):
-    """Test replacing config with smaller history limit."""
+def test_update_command_history_reduced(runtime):
+    """Test updating config with smaller history limit."""
     config1 = CommandConfig(
         name=simple_config.name,
         command="echo v1",
@@ -600,8 +590,8 @@ def test_replace_command_history_reduced(runtime):
         runtime.mark_run_complete(run)
         runs.append(run)
 
-    # Replace with smaller limit
-    runtime.replace_command(config2)
+    # Update with smaller limit
+    runtime.update_command(config2)
 
     # Should keep only last 2
     history = runtime.get_history(simple_config.name)
@@ -609,8 +599,8 @@ def test_replace_command_history_reduced(runtime):
     assert history == runs[-2:]
 
 
-def test_replace_command_history_increased(runtime, simple_config):
-    """Test replacing config with larger history limit."""
+def test_update_command_history_increased(runtime, simple_config):
+    """Test updating config with larger history limit."""
     config1 = CommandConfig(
         name=simple_config.name,
         command="echo v1",
@@ -634,8 +624,8 @@ def test_replace_command_history_increased(runtime, simple_config):
         runtime.mark_run_complete(run)
         runs.append(run)
 
-    # Replace with larger limit
-    runtime.replace_command(config2)
+    # Update with larger limit
+    runtime.update_command(config2)
 
     # History should still have 2 runs
     history = runtime.get_history(simple_config.name)
@@ -651,6 +641,48 @@ def test_replace_command_history_increased(runtime, simple_config):
 
     history = runtime.get_history(simple_config.name)
     assert len(history) == 5
+
+
+def test_update_command_to_unlimited_history(runtime, simple_config):
+    """Test updating config from bounded to unlimited history (-1)."""
+    config1 = CommandConfig(
+        name=simple_config.name,
+        command="echo v1",
+        triggers=["t"],
+        keep_in_memory=2,
+    )
+    config2 = CommandConfig(
+        name=simple_config.name,
+        command="echo v2",
+        triggers=["t"],
+        keep_in_memory=-1,  # Unlimited
+    )
+
+    runtime.register_command(config1)
+
+    # Add 2 runs (at limit)
+    runs = []
+    for i in range(2):
+        run = RunResult(command_name=simple_config.name, run_id=f"run-{i}")
+        run.mark_success()
+        runtime.mark_run_complete(run)
+        runs.append(run)
+
+    # Update to unlimited history
+    runtime.update_command(config2)
+
+    # History should still have 2 runs
+    history = runtime.get_history(simple_config.name, limit=0)  # No limit
+    assert len(history) == 2
+
+    # Now add many more runs - should all be kept
+    for i in range(10):
+        run = RunResult(command_name=simple_config.name, run_id=f"run-extra-{i}")
+        run.mark_success()
+        runtime.mark_run_complete(run)
+
+    history = runtime.get_history(simple_config.name, limit=0)  # No limit
+    assert len(history) == 12  # 2 original + 10 new
 
 
 # ================================================================
@@ -706,3 +738,19 @@ def test_repr(runtime, simple_config):
     assert "commands=1" in repr_str
     assert "active=0" in repr_str
     assert "commands_with_completed_runs=0" in repr_str
+
+
+def test_repr_with_completed_run(runtime, simple_config):
+    """Test string representation includes latest result details."""
+    runtime.register_command(simple_config)
+
+    # Complete a run
+    run = RunResult(command_name=simple_config.name, run_id="test-run-id-12345")
+    run.mark_success()
+    runtime.mark_run_complete(run)
+
+    repr_str = repr(runtime)
+    assert "CommandRuntime" in repr_str
+    assert simple_config.name in repr_str
+    assert "latest_result_id=test-run" in repr_str  # Shows first 8 chars of run_id
+    assert "state=success" in repr_str.lower()
