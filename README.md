@@ -60,7 +60,7 @@ max_concurrent = 1
 on_retrigger = "cancel_and_restart"
 debounce_in_ms = 500  # Wait 500ms after last trigger before running
 timeout_secs = 300
-keep_history = 3
+keep_in_memory = 3
 loop_detection = true
 
 [[command]]
@@ -68,7 +68,7 @@ name = "Tests"
 triggers = ["command_success:Lint", "Tests"]
 command = "pytest {{ tests_directory }} -q"
 timeout_secs = 180
-keep_history = 5
+keep_in_memory = 5
 loop_detection = true
 ```
 
@@ -297,6 +297,81 @@ if handle.metadata_file:
 - ✅ No performance impact when disabled (default)
 - ✅ Cancelled commands preserve output if process exits gracefully
 
+
+### Memory vs. Disk History
+
+cmdorc separates **in-memory history** (for API queries) from **disk persistence** (for long-term storage):
+
+**In-Memory History** (`CommandConfig.keep_in_memory`):
+- Controls how many runs are kept in RAM
+- Affects `get_history()` API results  
+- Faster access, limited by memory
+- Loaded from disk on startup (if output_storage enabled)
+
+**Disk History** (`OutputStorageConfig.keep_history`):
+- Controls how many run directories are kept on disk
+- Enables metrics analysis and auditing
+- Survives restarts
+
+**Configuration Examples:**
+
+```toml
+# Pattern 1: Small memory cache, large disk archive
+[output_storage]
+keep_history = 100  # Keep 100 runs on disk
+
+[[command]]
+name = "Tests"
+keep_in_memory = 3  # Only 3 in RAM for UI queries
+# → On startup: Loads 3 most recent from disk
+
+# Pattern 2: No persistence, memory only  
+[output_storage]
+keep_history = 0  # Disabled (no files written)
+
+[[command]]
+name = "Lint"
+keep_in_memory = 10  # Keep 10 in RAM only
+
+# Pattern 3: Audit trail (unlimited disk, limited memory)
+[output_storage]
+keep_history = -1  # Never delete files
+
+[[command]]
+name = "Deploy"
+keep_in_memory = 5  # Only 5 recent in RAM
+# → On startup: Loads 5 most recent from disk
+
+# Pattern 4: Large memory for dashboard
+[output_storage]
+keep_history = 50
+
+[[command]]
+name = "Benchmark"
+keep_in_memory = -1  # Unlimited memory
+# → On startup: Loads all 50 runs from disk
+```
+
+**Startup Loading:**
+- Automatically loads up to `keep_in_memory` runs on initialization
+- Only when `output_storage` is enabled
+- Loads most recent runs (sorted by modification time)
+- Gracefully handles corrupted/missing files
+- Updates `latest_result` with newest loaded run
+
+**Example:**
+```python
+# First run: create and execute commands
+config = load_config("cmdorc.toml")
+orch1 = CommandOrchestrator(config)
+# ... run commands, outputs written to disk ...
+
+# Later (after restart): history auto-loaded
+orch2 = CommandOrchestrator(config)
+history = orch2.get_history("Tests")  # Already populated!
+print(f"Loaded {len(history)} runs from disk")
+```
+
 ## Introspection (Great for UIs)
 
 ```python
@@ -395,7 +470,7 @@ Handle failures gracefully with cmdorc-specific exceptions:
 ### History Retention
 
 ```toml
-keep_history = 10  # Keep last 10 runs for debugging
+keep_in_memory = 10  # Keep last 10 runs for debugging
 ```
 
 ```python

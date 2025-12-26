@@ -166,12 +166,20 @@ class CommandConfig:
     and max_concurrent has been reached.
     """
 
-    keep_history: int = 1
+    keep_in_memory: int = 1
     """
-    How many past RunResult objects to keep.
-    0 = no history (but latest_result is always tracked separately)
-    1 = keep only the most recent (default)
-    N = keep last N runs
+    How many completed RunResult objects to keep in memory.
+
+    Controls in-memory history accessible via get_history() API.
+    Loaded runs from disk are also limited by this setting.
+
+    Values:
+    - 0 = No in-memory history (but latest_result always tracked)
+    - 1 = Keep only the most recent (default)
+    - N > 0 = Keep last N runs in memory
+    - -1 = Unlimited (keep all runs in memory)
+
+    Note: This is separate from OutputStorageConfig.keep_history which controls disk retention.
     """
 
     vars: dict[str, str] = field(default_factory=dict)
@@ -222,6 +230,15 @@ class CommandConfig:
             except OSError as e:
                 logger.warning(f"Invalid config for '{self.name}': Invalid cwd: {e}")
                 raise ConfigValidationError(f"Invalid cwd for '{self.name}': {e}") from None
+
+        # ────── Validate keep_in_memory ──────
+        if self.keep_in_memory < -1:
+            logger.warning(
+                f"Invalid config for '{self.name}': keep_in_memory must be -1 (unlimited), 0, or positive"
+            )
+            raise ConfigValidationError(
+                f"keep_in_memory must be -1 (unlimited), 0 (disabled), or positive"
+            )
 
         # ────── Validate triggers ──────
         for t in self.triggers:

@@ -8,6 +8,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Startup History Loading** - Persisted command runs are now automatically loaded on startup
+  - Loads up to `keep_in_memory` runs from disk for each command
+  - Respects memory limits (loads min(keep_in_memory, files_available))
+  - Works with unlimited memory (`keep_in_memory = -1`)
+  - Only loads for commands with `keep_in_memory > 0`
+  - Gracefully handles corrupted/missing files
+  - Automatic latest_result update with newest loaded run
+  - 20 new comprehensive tests for metadata parsing and history loading
+
+- **Metadata Parser Module** (`metadata_parser.py`) - Reconstructs RunResult from TOML files
+  - Parses `metadata.toml` files created by `RunResult.to_toml()`
+  - Reads sibling `output.txt` files for command output
+  - Handles missing/corrupted files gracefully
+  - Validates required fields and state enums
+  - Preserves all run metadata (timestamps, trigger chains, resolved commands)
+
+- **History Loader Module** (`history_loader.py`) - Populates CommandRuntime from disk
+  - Loads most recent runs based on modification time
+  - Ignores run directories for unknown commands (multi-instance safety)
+  - Skips directories without metadata.toml
+  - Comprehensive logging for visibility
+
 - **Output Storage Feature** - Automatic persistence of command outputs to disk
   - Configure via `[output_storage]` section in TOML with `keep_history` setting
   - `keep_history = 0`: Disabled (no files written) [default]
@@ -46,7 +68,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Raises `ValueError` if variable resolution fails
   - 8 comprehensive tests covering all scenarios (basic, variables, env, errors, etc.)
 
+- **load_config()** now parses `[output_storage]` section from TOML files
 ### Changed
+- **BREAKING: CommandConfig.keep_history renamed to keep_in_memory** (v0.3.0)
+  - Clarifies that this setting controls in-memory history, not disk persistence
+  - Backward compatibility provided via deprecation warning in load_config()
+  - Old TOML configs using `keep_history` will work but emit warning
+  - Support for `keep_history` will be removed in v0.4.0
+  - Migration: Simply rename `keep_history` to `keep_in_memory` in `[[command]]` sections
+
+- **CommandConfig.keep_in_memory now supports unlimited (-1)**
+  - `keep_in_memory = -1`: Unlimited in-memory history (new)
+  - `keep_in_memory = 0`: No history (unchanged)
+  - `keep_in_memory = N > 0`: Keep last N runs (unchanged)
+
+- **CommandRuntime.add_to_history() public method added**
+  - Used by history loader to populate runtime on startup
+  - Respects keep_in_memory limits automatically via deque maxlen
+
+- **CommandOrchestrator.__init__() now loads persisted history**
+  - Automatically loads up to `keep_in_memory` runs from disk on startup
+  - Only when output_storage is enabled
+  - Logs count of loaded runs per command
+
 - **OutputStorageConfig** added to public API exports
 - **LocalSubprocessExecutor** now accepts `output_storage` parameter
 - **CommandOrchestrator** passes `output_storage` to executor when creating default executor

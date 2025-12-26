@@ -102,6 +102,17 @@ class CommandOrchestrator:
         for config in runner_config.commands:
             self._runtime.register_command(config)
 
+        # Load persisted history from disk (if output storage enabled)
+        if self._output_storage.is_enabled:
+            from .history_loader import HistoryLoader
+
+            loader = HistoryLoader(self._runtime, self._output_storage)
+            loaded_counts = loader.load_all()
+
+            if loaded_counts:
+                total = sum(loaded_counts.values())
+                logger.info(f"Loaded {total} persisted runs on startup: {loaded_counts}")
+
         logger.debug(
             f"Initialized CommandOrchestrator with {len(runner_config.commands)} commands "
             f"(output_storage_enabled={self._output_storage.is_enabled})"

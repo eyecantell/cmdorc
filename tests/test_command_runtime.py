@@ -47,7 +47,7 @@ def config_with_history():
         name=config_with_history.name,
         command="echo history",
         triggers=["trigger"],
-        keep_history=5,
+        keep_in_memory=5,
     )
 
 
@@ -58,7 +58,7 @@ def config_no_history():
         name=config_no_history.name,
         command="echo no_history",
         triggers=["trigger"],
-        keep_history=0,
+        keep_in_memory=0,
     )
 
 
@@ -122,13 +122,13 @@ def test_replace_command(runtime):
         name="replace_test",
         command="echo v1",
         triggers=["trigger1"],
-        keep_history=1,
+        keep_in_memory=1,
     )
     config2 = CommandConfig(
         name="replace_test",
         command="echo v2",
         triggers=["trigger2"],
-        keep_history=3,
+        keep_in_memory=3,
     )
 
     runtime.register_command(config1)
@@ -137,7 +137,7 @@ def test_replace_command(runtime):
     retrieved = runtime.get_command("replace_test")
     assert retrieved.command == "echo v2"
     assert retrieved.triggers == ["trigger2"]
-    assert retrieved.keep_history == 3
+    assert retrieved.keep_in_memory == 3
 
 
 def test_replace_nonexistent_raises(runtime, simple_config):
@@ -285,7 +285,7 @@ def test_mark_run_complete_adds_to_history(runtime, config_with_history):
 
 
 def test_mark_run_complete_respects_maxlen(runtime, config_with_history):
-    """Test that history respects keep_history limit."""
+    """Test that history respects keep_in_memory limit."""
     runtime.register_command(config_with_history)
 
     # Create more runs than history limit (5)
@@ -303,7 +303,7 @@ def test_mark_run_complete_respects_maxlen(runtime, config_with_history):
 
 
 def test_mark_run_complete_no_history(runtime, config_no_history):
-    """Test that runs aren't added to history when keep_history=0."""
+    """Test that runs aren't added to history when keep_in_memory=0."""
     runtime.register_command(config_no_history)
 
     run = RunResult(command_name=config_no_history.name, run_id="run-1")
@@ -551,13 +551,13 @@ def test_replace_command_history_disabled(runtime, simple_config):
         name=simple_config.name,
         command="echo v1",
         triggers=["t"],
-        keep_history=3,
+        keep_in_memory=3,
     )
     config2 = CommandConfig(
         name=simple_config.name,
         command="echo v2",
         triggers=["t"],
-        keep_history=0,
+        keep_in_memory=0,
     )
 
     runtime.register_command(config1)
@@ -581,13 +581,13 @@ def test_replace_command_history_reduced(runtime):
         name=simple_config.name,
         command="echo v1",
         triggers=["t"],
-        keep_history=5,
+        keep_in_memory=5,
     )
     config2 = CommandConfig(
         name=simple_config.name,
         command="echo v2",
         triggers=["t"],
-        keep_history=2,
+        keep_in_memory=2,
     )
 
     runtime.register_command(config1)
@@ -615,13 +615,13 @@ def test_replace_command_history_increased(runtime, simple_config):
         name=simple_config.name,
         command="echo v1",
         triggers=["t"],
-        keep_history=2,
+        keep_in_memory=2,
     )
     config2 = CommandConfig(
         name=simple_config.name,
         command="echo v2",
         triggers=["t"],
-        keep_history=5,
+        keep_in_memory=5,
     )
 
     runtime.register_command(config1)
@@ -675,7 +675,7 @@ def test_get_stats_populated(runtime):
             name=f"cmd{i}",
             command=f"echo {i}",
             triggers=["t"],
-            keep_history=1,
+            keep_in_memory=1,
         )
         runtime.register_command(config)
 
@@ -693,7 +693,7 @@ def test_get_stats_populated(runtime):
     stats = runtime.get_stats()
     assert stats["total_commands"] == 3
     assert stats["total_active_runs"] == 2
-    assert stats["commands_with_history"] == 3  # All have keep_history=1
+    assert stats["commands_with_history"] == 3  # All have keep_in_memory=1
     assert stats["commands_with_completed_runs"] == 2
 
 

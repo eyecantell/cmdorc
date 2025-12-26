@@ -47,11 +47,11 @@ class CommandRuntime:
         self._active_runs: dict[str, list[RunResult]] = defaultdict(list)
 
         # Latest result: name -> most recent completed RunResult
-        # Always present after first run, even if keep_history=0
+        # Always present after first run, even if keep_in_memory=0
         self._latest_result: dict[str, RunResult] = {}
 
         # History: name -> bounded deque of completed RunResults
-        # Size controlled by CommandConfig.keep_history
+        # Size controlled by CommandConfig.keep_in_memory
         self._history: dict[str, deque[RunResult]] = {}
 
         # Debounce tracking: name -> timestamp of last START (not completion!)
@@ -75,10 +75,15 @@ class CommandRuntime:
         self._configs[config.name] = config
 
         # Initialize history deque with appropriate maxlen
-        if config.keep_history > 0:
-            self._history[config.name] = deque(maxlen=config.keep_history)
+        if config.keep_in_memory > 0:
+            # Bounded deque
+            self._history[config.name] = deque(maxlen=config.keep_in_memory)
+        elif config.keep_in_memory == -1:
+            # Unbounded deque (unlimited)
+            self._history[config.name] = deque()
+        # else: keep_in_memory == 0, no deque created
 
-        logger.debug(f"Registered command '{config.name}' (keep_history={config.keep_history})")
+        logger.debug(f"Registered command '{config.name}' (keep_in_memory={config.keep_in_memory})")
 
     def remove_command(self, name: str) -> None:
         """
@@ -114,21 +119,29 @@ class CommandRuntime:
         old_config = self._configs[config.name]
         self._configs[config.name] = config
 
-        # Adjust history deque if keep_history changed
-        if config.keep_history != old_config.keep_history:
-            if config.keep_history == 0:
+        # Adjust history deque if keep_in_memory changed
+        if config.keep_in_memory != old_config.keep_in_memory:
+            if config.keep_in_memory == 0:
                 # Disable history tracking
                 self._history.pop(config.name, None)
                 logger.debug(f"Disabled history for '{config.name}'")
-            else:
-                # Create new deque with new maxlen
+            elif config.keep_in_memory == -1:
+                # Unlimited: convert to unbounded deque
                 old_deque = self._history.get(config.name, deque())
-                new_deque = deque(old_deque, maxlen=config.keep_history)
+                self._history[config.name] = deque(old_deque)  # No maxlen
+                logger.debug(
+                    f"Adjusted history for '{config.name}': "
+                    f"{old_config.keep_in_memory} -> unlimited"
+                )
+            else:
+                # Bounded: create new deque with new maxlen
+                old_deque = self._history.get(config.name, deque())
+                new_deque = deque(old_deque, maxlen=config.keep_in_memory)
 
                 self._history[config.name] = new_deque
                 logger.debug(
                     f"Adjusted history for '{config.name}': "
-                    f"{old_config.keep_history} -> {config.keep_history}"
+                    f"{old_config.keep_in_memory} -> {config.keep_in_memory}"
                 )
 
         logger.debug(f"Finished replace of config for '{config.name}'")
@@ -230,13 +243,14 @@ class CommandRuntime:
 
         # Add to history if tracking is enabled
         config = self._configs[name]
-        if config.keep_history > 0:
+        if config.keep_in_memory != 0:  # Both positive and -1 (unlimited)
             history = self._history.get(name)
             if history is not None:
                 history.append(result)
+                limit_str = "unlimited" if config.keep_in_memory == -1 else str(config.keep_in_memory)
                 logger.debug(
                     f"Added run {result.run_id[:8]} to '{name}' history "
-                    f"(size={len(history)}/{config.keep_history})"
+                    f"(size={len(history)}/{limit_str})"
                 )
 
     def get_active_runs(self, name: str) -> list[RunResult]:
@@ -273,7 +287,7 @@ class CommandRuntime:
 
     def get_history(self, name: str, limit: int = 10) -> list[RunResult]:
         """
-        Get command history (bounded by keep_history setting).
+        Get command history (bounded by keep_in_memory setting).
 
         Args:
             name: Command name
@@ -281,7 +295,7 @@ class CommandRuntime:
 
         Returns:
             List of completed RunResults, most recent last.
-            Empty list if no history or keep_history=0.
+            Empty list if no history or keep_in_memory=0.
         Raises:
             KeyError if command not registered
         """
@@ -293,6 +307,33 @@ class CommandRuntime:
         # Return up to `limit` most recent runs
         # deque is ordered by completion time (oldest first)
         return list(history)[-limit:] if limit > 0 else list(history)
+
+    def add_to_history(self, command_name: str, result: RunResult) -> None:
+        """
+        Add a result to command history (used by history loader on startup).
+
+        This method respects the keep_in_memory limit automatically via the deque's maxlen.
+        If keep_in_memory=0, the command has no history deque and this is a no-op.
+
+        Args:
+            command_name: Name of the command
+            result: RunResult to add to history
+
+        Raises:
+            CommandNotFoundError: If command not registered
+        """
+        self.verify_registered(command_name)
+
+        # Only add if history tracking is enabled (deque exists)
+        history = self._history.get(command_name)
+        if history is not None:
+            history.append(result)
+            config = self._configs[command_name]
+            limit_str = "unlimited" if config.keep_in_memory == -1 else str(config.keep_in_memory)
+            logger.debug(
+                f"Added loaded run {result.run_id[:8]} to '{command_name}' history "
+                f"(size={len(history)}/{limit_str})"
+            )
 
     # ================================================================
     # Status Queries

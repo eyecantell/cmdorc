@@ -64,6 +64,21 @@ def load_config(path: str | Path | BinaryIO | TextIO) -> RunnerConfig:
 
     commands = []
     for cmd_dict in command_data:
+        # Backward compatibility: keep_history -> keep_in_memory (deprecated in v0.3.0)
+        if "keep_history" in cmd_dict:
+            if "keep_in_memory" in cmd_dict:
+                raise ConfigValidationError(
+                    f"Command '{cmd_dict.get('name', '<unknown>')}': "
+                    f"Cannot specify both 'keep_history' (deprecated) and 'keep_in_memory'. "
+                    f"Use 'keep_in_memory' only."
+                )
+            logger.warning(
+                f"Command '{cmd_dict.get('name', '<unknown>')}': "
+                f"'keep_history' is deprecated in CommandConfig, use 'keep_in_memory' instead. "
+                f"Support for 'keep_history' will be removed in v0.4.0."
+            )
+            cmd_dict["keep_in_memory"] = cmd_dict.pop("keep_history")
+
         # Resolve relative cwd
         if "cwd" in cmd_dict and cmd_dict["cwd"] is not None:
             cwd_path = Path(cmd_dict["cwd"])
