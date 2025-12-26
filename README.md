@@ -5,6 +5,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Tests](https://img.shields.io/badge/tests-424%20passing-brightgreen)](https://github.com/eyecantell/cmdorc/tree/main/tests)
 [![Coverage](https://img.shields.io/badge/coverage-93%25-brightgreen)](https://github.com/eyecantell/cmdorc)
+[![Downloads](https://pepy.tech/badge/cmdorc)](https://pepy.tech/project/cmdorc)
 [![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 [![Typing: PEP 561](https://img.shields.io/badge/typing-PEP%20561-blue)](https://peps.python.org/pep-0561/)
 

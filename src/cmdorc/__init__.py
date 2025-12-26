@@ -1,4 +1,4 @@
-__version__ = "0.3.0"
+__version__ = "0.3.1"
 
 from .command_config import CommandConfig, OutputStorageConfig, RunnerConfig
 from .command_executor import CommandExecutor
