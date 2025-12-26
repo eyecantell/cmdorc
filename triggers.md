@@ -19,7 +19,9 @@ runner.get_commands_by_trigger("pre_commit") # → returns list of Command objec
 runner.has_trigger("pre_commit") # → True if at least one command has the given trigger
 ```
 
-There is no separate `run_command()` method. Use `runner.trigger("CommandName")` for manual runs (after adding `"CommandName"` to its `triggers`).
+For manual execution of a specific command, you can use either:
+- `runner.run_command("CommandName")` - Direct execution (recommended)
+- `runner.trigger("CommandName")` - Via trigger (requires adding `"CommandName"` to its `triggers`)
 
 ```toml
 [[command]]

@@ -1,6 +1,6 @@
 # cmdorc Architecture Reference
 
-**Version:** 0.1.0 (Refactored)  
+**Version:** 0.3.0
 **Status:** Authoritative design document for implementation
 
 This is the single source of truth for cmdorc's architecture, class responsibilities, and API contracts.

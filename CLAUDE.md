@@ -310,8 +310,8 @@ tests/
 - Variable Resolution (runtime merging and template substitution)
 
 **Statistics:**
-- **Test Count:** 357 tests (all passing)
+- **Test Count:** 409 tests (all passing)
 - **Test Files:** 12 test modules
-- **Coverage:** 94% overall
+- **Coverage:** 92% overall
 - **Python Support:** 3.10+
 - **Dependencies:** Zero (except tomli for Python <3.11)
