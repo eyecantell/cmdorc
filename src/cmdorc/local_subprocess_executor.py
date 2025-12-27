@@ -350,7 +350,7 @@ class LocalSubprocessExecutor(CommandExecutor):
             result: The RunResult to build path for
 
         Returns:
-            Path to directory for this run (contains metadata.toml and output.txt)
+            Path to directory for this run (contains metadata.toml and output file)
         """
         from .command_config import OUTPUT_PATTERN
 
@@ -366,8 +366,8 @@ class LocalSubprocessExecutor(CommandExecutor):
         Write output and metadata files for a completed run.
 
         Creates directory structure based on pattern, then writes:
-            - metadata.toml: Run metadata
-            - output.txt: Command output
+            - metadata.toml: Run metadata (includes output_extension for parser)
+            - output{extension}: Command output
 
         Args:
             result: The RunResult to persist
@@ -381,17 +381,18 @@ class LocalSubprocessExecutor(CommandExecutor):
             # Create directory
             run_dir.mkdir(parents=True, exist_ok=True)
 
-            # Write output file
-            output_path = run_dir / "output.txt"
+            # Write output file with configurable extension
+            output_filename = f"output{self._output_storage.output_extension}"
+            output_path = run_dir / output_filename
             output_path.write_text(result.output or "", encoding="utf-8")
 
-            # Write metadata file
+            # Set file paths on result BEFORE to_toml() so they're included in metadata
             metadata_path = run_dir / "metadata.toml"
-            metadata_path.write_text(result.to_toml(), encoding="utf-8")
-
-            # Update result with file paths
             result.output_file = output_path
             result.metadata_file = metadata_path
+
+            # Write metadata file (includes output_file name for parser)
+            metadata_path.write_text(result.to_toml(), encoding="utf-8")
 
             logger.debug(f"Wrote output files to {run_dir}")
 

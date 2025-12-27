@@ -313,3 +313,62 @@ triggers = []
     )
     with pytest.raises(ConfigValidationError, match="Command.*cannot be empty"):
         load_config(toml)
+
+
+# =====================================================================
+# Output Storage Config Parsing Tests
+# =====================================================================
+
+
+def test_output_storage_default():
+    """output_storage defaults to disabled with .txt extension."""
+    toml = io.BytesIO(
+        b"""
+[[command]]
+name = "Test"
+command = "echo"
+triggers = []
+"""
+    )
+    config = load_config(toml)
+    assert config.output_storage.keep_history == 0
+    assert config.output_storage.output_extension == ".txt"
+    assert not config.output_storage.is_enabled
+
+
+def test_output_storage_with_extension():
+    """output_extension is parsed from TOML."""
+    toml = io.BytesIO(
+        b"""
+[output_storage]
+keep_history = 5
+output_extension = ".log"
+
+[[command]]
+name = "Test"
+command = "echo"
+triggers = []
+"""
+    )
+    config = load_config(toml)
+    assert config.output_storage.keep_history == 5
+    assert config.output_storage.output_extension == ".log"
+    assert config.output_storage.is_enabled
+
+
+def test_output_storage_invalid_extension():
+    """Invalid output_extension should fail validation."""
+    toml = io.BytesIO(
+        b"""
+[output_storage]
+keep_history = 5
+output_extension = "txt"
+
+[[command]]
+name = "Test"
+command = "echo"
+triggers = []
+"""
+    )
+    with pytest.raises(ConfigValidationError, match="must start with a dot"):
+        load_config(toml)

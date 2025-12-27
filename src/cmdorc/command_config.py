@@ -65,7 +65,7 @@ class OutputStorageConfig:
 
     When enabled (keep_history != 0), command outputs are automatically saved to disk:
     - metadata.toml: Run metadata (state, duration, trigger chain, resolved command, etc.)
-    - output.txt: Raw command output (stdout + stderr)
+    - output{extension}: Raw command output (stdout + stderr)
 
     File storage is controlled by keep_history setting:
     - keep_history = 0: Disabled (no files written) [default]
@@ -92,12 +92,28 @@ class OutputStorageConfig:
     - N (N > 0) = Keep last N runs (oldest deleted when limit exceeded)
     """
 
+    output_extension: str = ".txt"
+    """
+    File extension for output files.
+    Must start with a dot (e.g., ".txt", ".log", ".json").
+
+    Default: .txt
+    """
+
     def __post_init__(self) -> None:
         """Validate configuration."""
         if self.keep_history < -1:
             logger.warning("Invalid output_storage config: keep_history must be >= -1")
             raise ConfigValidationError(
                 "output_storage.keep_history must be -1 (unlimited), 0 (disabled), or positive"
+            )
+        if not self.output_extension.startswith("."):
+            raise ConfigValidationError(
+                f"output_storage.output_extension must start with a dot, got: {self.output_extension!r}"
+            )
+        if "/" in self.output_extension or "\\" in self.output_extension:
+            raise ConfigValidationError(
+                f"output_storage.output_extension cannot contain path separators: {self.output_extension!r}"
             )
 
     @property

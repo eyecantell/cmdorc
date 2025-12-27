@@ -5,6 +5,16 @@ All notable changes to cmdorc will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Configurable output file extension** (`output_extension`) - Customize the output file format
+  - New `output_extension` field in `OutputStorageConfig` (default: `.txt`)
+  - Supports any extension (e.g., `.log`, `.json`, `.out`)
+  - Extension is stored in `metadata.toml` for reliable history loading
+  - Configure via TOML: `[output_storage]\noutput_extension = ".log"`
+  - 10 new tests for configurable extension feature
+
 ## [0.3.1]
 
 ### Added
@@ -16,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - **`CommandRuntime.replace_command()` renamed to `update_command()`** - Consistent naming with `CommandOrchestrator.update_command()`
 - **Debounce timing now accessed via public methods** - `get_last_start_time()` and `get_last_completion_time()` replace direct access to private attributes
+- **TOML output file ordering improved** - `output_file` and `metadata_file` fields now appear before `[resolved_command]` section to avoid being parsed as nested keys
 
 ### Fixed
 - **Memory leak in `remove_command()`** - Now properly cleans up `_last_completion` tracking when commands are removed

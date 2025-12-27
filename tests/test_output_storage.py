@@ -90,6 +90,32 @@ class TestOutputStorageConfig:
         with pytest.raises(ConfigValidationError, match="must be -1"):
             OutputStorageConfig(keep_history=-2)
 
+    def test_default_output_extension(self):
+        """Default output extension is .txt."""
+        config = OutputStorageConfig()
+        assert config.output_extension == ".txt"
+
+    def test_custom_output_extension(self):
+        """Custom output extensions are accepted."""
+        config = OutputStorageConfig(output_extension=".log")
+        assert config.output_extension == ".log"
+
+        config2 = OutputStorageConfig(output_extension=".json")
+        assert config2.output_extension == ".json"
+
+    def test_output_extension_must_start_with_dot(self):
+        """output_extension must start with a dot."""
+        with pytest.raises(ConfigValidationError, match="must start with a dot"):
+            OutputStorageConfig(output_extension="txt")
+
+    def test_output_extension_no_path_separators(self):
+        """output_extension cannot contain path separators."""
+        with pytest.raises(ConfigValidationError, match="cannot contain path separators"):
+            OutputStorageConfig(output_extension=".txt/bad")
+
+        with pytest.raises(ConfigValidationError, match="cannot contain path separators"):
+            OutputStorageConfig(output_extension=".txt\\bad")
+
 
 # =====================================================================
 # TOML Serialization Tests
@@ -261,6 +287,61 @@ class TestFileWriting:
         # Directory should be created
         assert temp_output_dir.exists()
         assert (temp_output_dir / "Test" / "run-004").exists()
+
+    async def test_custom_output_extension(self, temp_output_dir):
+        """Files use custom extension when configured."""
+        config = OutputStorageConfig(
+            directory=str(temp_output_dir),
+            keep_history=5,
+            output_extension=".log",
+        )
+        executor = LocalSubprocessExecutor(output_storage=config)
+        result = RunResult(command_name="Echo", run_id="run-ext-001")
+        resolved = ResolvedCommand(
+            command='echo "custom extension test"', cwd=None, env={}, timeout_secs=None, vars={}
+        )
+
+        await executor.start_run(result, resolved)
+        await asyncio.sleep(0.2)
+
+        # Check files exist with correct extension
+        run_dir = temp_output_dir / "Echo" / "run-ext-001"
+        assert run_dir.exists()
+        assert (run_dir / "metadata.toml").exists()
+        assert (run_dir / "output.log").exists()
+        assert not (run_dir / "output.txt").exists()  # Should NOT have .txt
+
+        # Check result has correct file path
+        assert result.output_file == run_dir / "output.log"
+
+        # Check file contents
+        output_text = (run_dir / "output.log").read_text()
+        assert "custom extension test" in output_text
+
+        # Check metadata contains correct output_file name
+        metadata_text = (run_dir / "metadata.toml").read_text()
+        assert 'output_file = "output.log"' in metadata_text
+
+    async def test_json_extension(self, temp_output_dir):
+        """JSON extension works correctly."""
+        config = OutputStorageConfig(
+            directory=str(temp_output_dir),
+            keep_history=5,
+            output_extension=".json",
+        )
+        executor = LocalSubprocessExecutor(output_storage=config)
+        result = RunResult(command_name="Echo", run_id="run-json-001")
+        resolved = ResolvedCommand(
+            command='echo "test"', cwd=None, env={}, timeout_secs=None, vars={}
+        )
+
+        await executor.start_run(result, resolved)
+        await asyncio.sleep(0.2)
+
+        # Check output.json exists
+        run_dir = temp_output_dir / "Echo" / "run-json-001"
+        assert (run_dir / "output.json").exists()
+        assert result.output_file.name == "output.json"
 
 
 # =====================================================================

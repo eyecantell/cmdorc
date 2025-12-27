@@ -3,8 +3,8 @@
 [![PyPI version](https://badge.fury.io/py/cmdorc.svg)](https://badge.fury.io/py/cmdorc)
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Tests](https://img.shields.io/badge/tests-424%20passing-brightgreen)](https://github.com/eyecantell/cmdorc/tree/main/tests)
-[![Coverage](https://img.shields.io/badge/coverage-93%25-brightgreen)](https://github.com/eyecantell/cmdorc)
+[![Tests](https://img.shields.io/badge/tests-439%20passing-brightgreen)](https://github.com/eyecantell/cmdorc/tree/main/tests)
+[![Coverage](https://img.shields.io/badge/coverage-94%25-brightgreen)](https://github.com/eyecantell/cmdorc)
 [![Downloads](https://pepy.tech/badge/cmdorc)](https://pepy.tech/project/cmdorc)
 [![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 [![Typing: PEP 561](https://img.shields.io/badge/typing-PEP%20561-blue)](https://peps.python.org/pep-0561/)
@@ -213,7 +213,7 @@ handle.comment          # str: Cancellation reason or note
 handle.resolved_command # ResolvedCommand | None: Fully resolved command details
                         #   (command string, cwd, env vars, timeout, variable snapshot)
 handle.metadata_file    # Path | None: Path to metadata.toml (if output_storage enabled)
-handle.output_file      # Path | None: Path to output.txt (if output_storage enabled)
+handle.output_file      # Path | None: Path to output file (if output_storage enabled)
 ```
 
 ### RunResult (Accessed via RunHandle._result or history)
@@ -256,6 +256,7 @@ Automatically persist command outputs to disk with configurable retention:
 [output_storage]
 directory = ".cmdorc/outputs"           # Where to store files (default: .cmdorc/outputs)
 keep_history = 10                       # Keep last 10 runs per command
+output_extension = ".log"               # Custom extension (default: .txt)
 
 # Files are always organized as: {command_name}/{run_id}/
 # This structure is required for retention enforcement.
@@ -272,10 +273,10 @@ keep_history = 10                       # Keep last 10 runs per command
   Tests/
     run-123e4567/           # Each run gets its own directory
       metadata.toml         # Run metadata (state, duration, trigger chain, resolved command)
-      output.txt            # Command output (stdout + stderr)
+      output.log            # Command output (uses configured extension)
     run-456f8901/
       metadata.toml
-      output.txt
+      output.log
 ```
 
 **Access via RunHandle:**

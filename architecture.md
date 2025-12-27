@@ -1072,16 +1072,16 @@ class MockExecutor(CommandExecutor):
 ### 📊 Code Statistics
 
 - **Total lines of production code:** ~2,900
-- **Total lines of test code:** ~3,000
-- **Test coverage:** 93% overall
+- **Total lines of test code:** ~3,100
+- **Test coverage:** 94% overall
   - `command_runtime.py`: 100% coverage
   - `exceptions.py`: 100% coverage
   - `runtime_vars.py`: 100% coverage
   - `types.py`: 100% coverage
   - `trigger_engine.py`: 97% coverage
   - `run_handle.py`: 96% coverage
-  - `run_result.py`: 95% coverage
-- **Total tests:** 429 tests passing
+  - `run_result.py`: 96% coverage
+- **Total tests:** 439 tests passing
 - **All core components:** Production ready
 
 ---

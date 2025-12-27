@@ -304,7 +304,13 @@ class RunResult:
             chain_items = ", ".join(f'"{escape_toml_string(t)}"' for t in self.trigger_chain)
             lines.append(f"trigger_chain = [{chain_items}]")
 
-        # Add resolved command section
+        # Add file paths if present (BEFORE [resolved_command] section so they stay at top level)
+        if self.output_file:
+            lines.append(f'output_file = "{self.output_file.name}"')
+        if self.metadata_file:
+            lines.append(f'metadata_file = "{self.metadata_file.name}"')
+
+        # Add resolved command section (must come AFTER top-level fields)
         if self.resolved_command:
             lines.append("")
             lines.append("[resolved_command]")
@@ -320,13 +326,6 @@ class RunResult:
                 lines.append("[resolved_command.vars]")
                 for key, value in sorted(self.resolved_command.vars.items()):
                     lines.append(f'{key} = "{escape_toml_string(value)}"')
-
-        # Add file paths if present (just the filename, not full path)
-        if self.output_file:
-            lines.append("")
-            lines.append(f'output_file = "{self.output_file.name}"')
-        if self.metadata_file:
-            lines.append(f'metadata_file = "{self.metadata_file.name}"')
 
         return "\n".join(lines) + "\n"
 

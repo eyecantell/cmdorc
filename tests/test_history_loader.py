@@ -307,3 +307,61 @@ duration_str = "1s"
         # UnknownCommand should be ignored
         history = orch.get_history("Test")
         assert len(history) == 0
+
+    async def test_load_custom_output_extension(self, tmp_path):
+        """Test loading history with custom output extension."""
+        output_dir = tmp_path / "outputs"
+        output_dir.mkdir()
+
+        # Phase 1: Write runs with custom extension
+        config1 = OutputStorageConfig(
+            directory=str(output_dir),
+            keep_history=10,
+            output_extension=".log",
+        )
+        runner1 = RunnerConfig(
+            commands=[
+                CommandConfig(
+                    name="Test", command='echo "custom ext"', triggers=["test"], keep_in_memory=5
+                )
+            ],
+            output_storage=config1,
+        )
+        orch1 = CommandOrchestrator(runner1)
+
+        for _ in range(3):
+            handle = await orch1.run_command("Test")
+            await handle.wait()
+            await asyncio.sleep(0.05)
+
+        # Verify files written with .log extension
+        test_dir = output_dir / "Test"
+        run_dirs = list(test_dir.iterdir())
+        assert len(run_dirs) == 3
+        for run_dir in run_dirs:
+            assert (run_dir / "output.log").exists()
+            assert not (run_dir / "output.txt").exists()
+
+        # Phase 2: Restart and verify loading
+        config2 = OutputStorageConfig(
+            directory=str(output_dir),
+            keep_history=10,
+            output_extension=".log",
+        )
+        runner2 = RunnerConfig(
+            commands=[
+                CommandConfig(
+                    name="Test", command='echo "custom ext"', triggers=["test"], keep_in_memory=5
+                )
+            ],
+            output_storage=config2,
+        )
+        orch2 = CommandOrchestrator(runner2)
+
+        # Should load all 3 runs with output from .log files
+        history = orch2.get_history("Test")
+        assert len(history) == 3
+        for result in history:
+            assert result.output.strip() == "custom ext"
+            assert result.output_file is not None
+            assert result.output_file.name == "output.log"

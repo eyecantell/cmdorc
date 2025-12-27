@@ -2,8 +2,8 @@
 Metadata parser for loading persisted RunResult objects from TOML files.
 
 Parses metadata.toml files created by RunResult.to_toml() and reconstructs
-Reads sibling `output.txt` files for command output
-RunResult objects for history loading on startup.
+RunResult objects for history loading on startup. Reads sibling output files
+for command output (filename stored in metadata.toml as output_file field).
 """
 
 from __future__ import annotations
@@ -35,7 +35,7 @@ def parse_metadata_file(metadata_path: Path) -> RunResult | None:
         RunResult if valid, None if parsing fails
 
     Notes:
-        - Reads sibling output.txt file for command output
+        - Reads sibling output file (filename from output_file field, defaults to output.txt)
         - Gracefully handles missing or corrupted files
         - Returns None on any parse error (logs warning)
     """
@@ -79,8 +79,10 @@ def parse_metadata_file(metadata_path: Path) -> RunResult | None:
             )
 
         # Read output file (sibling to metadata.toml)
+        # Use output_file field from metadata if present, otherwise fall back to output.txt
         output = ""
-        output_file = metadata_path.parent / "output.txt"
+        output_filename = data.get("output_file", "output.txt")
+        output_file = metadata_path.parent / output_filename
         if output_file.exists():
             try:
                 output = output_file.read_text(encoding="utf-8")
