@@ -15,6 +15,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Configure via TOML: `[output_storage]\noutput_extension = ".log"`
   - 10 new tests for configurable extension feature
 
+### Changed
+- **`keep_in_memory` default changed from 1 to 3** - More useful default for debugging
+  - Most users benefit from having a few recent runs available
+  - Still customizable per-command or globally
+
 ## [0.3.1]
 
 ### Added

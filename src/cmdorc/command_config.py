@@ -166,7 +166,7 @@ class CommandConfig:
     and max_concurrent has been reached.
     """
 
-    keep_in_memory: int = 1
+    keep_in_memory: int = 3
     """
     How many completed RunResult objects to keep in memory.
 
@@ -175,8 +175,7 @@ class CommandConfig:
 
     Values:
     - 0 = No in-memory history (but latest_result always tracked)
-    - 1 = Keep only the most recent (default)
-    - N > 0 = Keep last N runs in memory
+    - N > 0 = Keep last N runs in memory (default: 3)
     - -1 = Unlimited (keep all runs in memory)
 
     Note: This is separate from OutputStorageConfig.keep_history which controls disk retention.
