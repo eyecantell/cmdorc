@@ -12,6 +12,33 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 
+def _format_relative_time(secs: float, *, suffix: str = "") -> str:
+    """Format seconds into a human-readable relative time string.
+
+    Args:
+        secs: Number of seconds to format
+        suffix: Optional suffix to append (e.g., " ago")
+
+    Returns:
+        Human-readable string like "452ms", "2.4s", "1m 23s", "2h 5m", "1d 3h", "2w 3d"
+    """
+    if secs < 1:
+        return f"{secs * 1000:.0f}ms{suffix}"
+    if secs < 60:
+        return f"{secs:.1f}s{suffix}"
+    mins, secs = divmod(int(secs), 60)  # int for clean display
+    if mins < 60:
+        return f"{mins}m {secs}s{suffix}"
+    hrs, mins = divmod(mins, 60)
+    if hrs < 24:
+        return f"{hrs}h {mins}m{suffix}"
+    days, hrs = divmod(hrs, 24)
+    if days < 7:
+        return f"{days}d {hrs}h{suffix}"
+    weeks, days = divmod(days, 7)
+    return f"{weeks}w {days}d{suffix}" if days else f"{weeks}w{suffix}"
+
+
 class RunState(Enum):
     """Possible states of a command execution."""
 
@@ -200,19 +227,15 @@ class RunResult:
         secs = self.duration_secs
         if secs is None:
             return "-"
-        if secs < 1:
-            return f"{secs * 1000:.0f}ms"
-        if secs < 60:
-            return f"{secs:.1f}s"
-        mins, secs = divmod(secs, 60)
-        if mins < 60:
-            return f"{int(mins)}m {secs:.0f}s"
-        hrs, mins = divmod(mins, 60)
-        if hrs < 24:
-            return f"{int(hrs)}h {int(mins)}m"
+        return _format_relative_time(secs)
 
-        days, hrs = divmod(hrs, 24)
-        return f"{int(days)}d {int(hrs)}h"
+    @property
+    def time_ago_str(self) -> str:
+        """Human-readable relative time since completion (e.g., '5s ago', '2d ago', '8w ago')."""
+        if self.end_time is None:
+            return "-"
+        secs = (datetime.datetime.now() - self.end_time).total_seconds()
+        return _format_relative_time(secs, suffix=" ago")
 
     @property
     def is_finalized(self) -> bool:

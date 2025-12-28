@@ -192,6 +192,11 @@ class RunHandle:
         return self._result.duration_str
 
     @property
+    def time_ago_str(self) -> str:
+        """Human-readable relative time since completion (e.g., '5s ago', '2d ago')."""
+        return self._result.time_ago_str
+
+    @property
     def is_finalized(self) -> bool:
         """Whether the run has finished (success, failed, or cancelled)."""
         return self._result.is_finalized

@@ -5,9 +5,24 @@ All notable changes to cmdorc will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **`time_ago_str` property** - Human-readable relative time since completion
+  - Available on both `RunResult` and `RunHandle`
+  - Returns strings like "5s ago", "2h 0m ago", "1w 3d ago"
+  - Returns "-" if run hasn't completed yet
+  - Useful for TUI displays and status dashboards
+
+- **`_format_relative_time()` helper** - Internal utility for consistent time formatting
+  - Centralizes duration/time-ago formatting logic
+  - Supports weeks (previously `duration_str` only went up to days)
+  - Used by both `duration_str` and `time_ago_str`
+
 ## [0.4.0]
 
 ### Added
+
 - **Configurable output file extension** (`output_extension`) - Customize the output file format
   - New `output_extension` field in `OutputStorageConfig` (default: `.txt`)
   - Supports any extension (e.g., `.log`, `.json`, `.out`)

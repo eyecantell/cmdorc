@@ -135,6 +135,7 @@ handle.success: bool | None
 handle.output: str
 handle.error: str | Exception | None
 handle.duration_str: str
+handle.time_ago_str: str
 handle.is_finalized: bool
 handle.start_time: datetime.datetime | None
 handle.end_time: datetime.datetime | None
@@ -745,13 +746,26 @@ def _finalize() -> None:
 def duration_secs(self) -> float | None
 
 @property
-def duration_str(self) -> str  # Human-readable: "452ms", "2.4s", "1m 23s"
+def duration_str(self) -> str  # Human-readable: "452ms", "2.4s", "1m 23s", "1d 3h", "2w 3d"
+
+@property
+def time_ago_str(self) -> str  # Human-readable: "5s ago", "2h 0m ago", "1w 3d ago"
 
 @property
 def is_finalized(self) -> bool
 
 def _set_completion_callback(callback)  # Idempotent for same callback
 ```
+
+**Time Formatting:**
+Both `duration_str` and `time_ago_str` use the internal `_format_relative_time()` helper which formats seconds into human-readable strings:
+- `<1s`: milliseconds (e.g., "500ms")
+- `<60s`: seconds with 1 decimal (e.g., "2.4s")
+- `<60m`: minutes and seconds (e.g., "1m 23s")
+- `<24h`: hours and minutes (e.g., "2h 5m")
+- `<7d`: days and hours (e.g., "1d 3h")
+- `≥7d`: weeks and days (e.g., "2w 3d" or "1w")
+
 **Note:** Mutable during execution; treat as immutable after `is_finalized=True`.
 
 ### RunHandle Owns the Future
@@ -1020,7 +1034,7 @@ class MockExecutor(CommandExecutor):
   - [x] Dispatch with ordering guarantee
   - [x] Cycle prevention
 - [x] `RunHandle` facade
-  - [x] Properties (command_name, run_id, state, success, output, error, duration_str, is_finalized, start_time, end_time, comment) 
+  - [x] Properties (command_name, run_id, state, success, output, error, duration_str, time_ago_str, is_finalized, start_time, end_time, comment)
   - [x] `wait()` with optional timeout
   - [x] Internal monitoring task (event-driven via asyncio.Event) 
 
