@@ -247,7 +247,8 @@ src/cmdorc/
 ├── run_result.py                  # RunResult, ResolvedCommand, RunState
 ├── runtime_vars.py                # Runtime variable resolution + merging
 ├── trigger_engine.py              # Trigger pattern matching and dispatch
-└── types.py                       # Type definitions (CommandStatus, etc.)
+├── types.py                       # Type definitions (CommandStatus, etc.)
+└── utils.py                       # General-purpose utilities (format_duration)
 
 tests/
 ├── test_command_executor.py       # Executor system tests
@@ -261,7 +262,8 @@ tests/
 ├── test_run_result.py             # RunResult state transition tests
 ├── test_runtime_vars.py           # Runtime variable resolution tests
 ├── test_trigger_chain.py          # Trigger chain tracking tests
-└── test_trigger_engine.py         # Trigger matching and dispatch tests
+├── test_trigger_engine.py         # Trigger matching and dispatch tests
+└── test_utils.py                  # Utility function tests
 ```
 
 ## Common Development Workflows
@@ -310,8 +312,8 @@ tests/
 - Variable Resolution (runtime merging and template substitution)
 
 **Statistics:**
-- **Test Count:** 439 tests (all passing)
-- **Test Files:** 12 test modules
+- **Test Count:** 452 tests (all passing)
+- **Test Files:** 13 test modules
 - **Coverage:** 94% overall
 - **Python Support:** 3.10+
 - **Dependencies:** Zero (except tomli for Python <3.11)

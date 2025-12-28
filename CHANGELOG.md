@@ -5,6 +5,21 @@ All notable changes to cmdorc will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0]
+
+### Added
+- **`format_duration()` public utility** - Human-readable duration formatting
+  - New `utils.py` module for general-purpose utilities
+  - Converts seconds to strings like "452ms", "2.4s", "1m 23s", "2h 5m", "1d 3h", "2w 3d"
+  - Available via `from cmdorc import format_duration`
+  - Useful for TUI builders and status displays
+
+### Changed
+- **`_format_relative_time()` extracted and renamed** - Now public as `format_duration()`
+  - Moved from `run_result.py` to new `utils.py` module
+  - Removed `suffix` parameter (callers append context themselves)
+  - `duration_str` and `time_ago_str` properties now use `format_duration()` internally
+
 ## [0.5.0]
 
 ### Added
