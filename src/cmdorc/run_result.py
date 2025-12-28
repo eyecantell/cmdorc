@@ -9,34 +9,9 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
+from .utils import format_duration
+
 logger = logging.getLogger(__name__)
-
-
-def _format_relative_time(secs: float, *, suffix: str = "") -> str:
-    """Format seconds into a human-readable relative time string.
-
-    Args:
-        secs: Number of seconds to format
-        suffix: Optional suffix to append (e.g., " ago")
-
-    Returns:
-        Human-readable string like "452ms", "2.4s", "1m 23s", "2h 5m", "1d 3h", "2w 3d"
-    """
-    if secs < 1:
-        return f"{secs * 1000:.0f}ms{suffix}"
-    if secs < 60:
-        return f"{secs:.1f}s{suffix}"
-    mins, secs = divmod(int(secs), 60)  # int for clean display
-    if mins < 60:
-        return f"{mins}m {secs}s{suffix}"
-    hrs, mins = divmod(mins, 60)
-    if hrs < 24:
-        return f"{hrs}h {mins}m{suffix}"
-    days, hrs = divmod(hrs, 24)
-    if days < 7:
-        return f"{days}d {hrs}h{suffix}"
-    weeks, days = divmod(days, 7)
-    return f"{weeks}w {days}d{suffix}" if days else f"{weeks}w{suffix}"
 
 
 class RunState(Enum):
@@ -227,7 +202,7 @@ class RunResult:
         secs = self.duration_secs
         if secs is None:
             return "-"
-        return _format_relative_time(secs)
+        return format_duration(secs)
 
     @property
     def time_ago_str(self) -> str:
@@ -235,7 +210,7 @@ class RunResult:
         if self.end_time is None:
             return "-"
         secs = (datetime.datetime.now() - self.end_time).total_seconds()
-        return _format_relative_time(secs, suffix=" ago")
+        return format_duration(secs) + " ago"
 
     @property
     def is_finalized(self) -> bool:

@@ -22,6 +22,7 @@ from .run_handle import RunHandle
 from .run_result import ResolvedCommand, RunResult, RunState
 from .trigger_engine import TriggerEngine
 from .types import CommandStatus, NewRunDecision, TriggerContext
+from .utils import format_duration
 
 __all__ = [
     # Version
@@ -42,6 +43,8 @@ __all__ = [
     "RunState",
     "TriggerContext",
     "TriggerEngine",
+    # Utilities
+    "format_duration",
     # Executors
     "CommandExecutor",
     "LocalSubprocessExecutor",

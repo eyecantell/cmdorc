@@ -4,7 +4,6 @@ import datetime
 import time
 
 from cmdorc import ResolvedCommand, RunResult, RunState
-from cmdorc.run_result import _format_relative_time
 
 
 def test_initial_state():
@@ -185,58 +184,6 @@ def test_duration_str_formatting():
     assert "h" in r.duration_str
     assert "m" in r.duration_str
     assert float(r.duration_str.replace("h", "").replace("m", "").replace(" ", "")) >= 130
-
-
-# ============================================================================
-# Tests for _format_relative_time helper
-# ============================================================================
-
-
-def test_format_relative_time_milliseconds():
-    assert _format_relative_time(0.5) == "500ms"
-    assert _format_relative_time(0.001) == "1ms"
-    assert _format_relative_time(0.999) == "999ms"
-
-
-def test_format_relative_time_seconds():
-    assert _format_relative_time(1.0) == "1.0s"
-    assert _format_relative_time(30.5) == "30.5s"
-    assert _format_relative_time(59.9) == "59.9s"
-
-
-def test_format_relative_time_minutes():
-    assert _format_relative_time(60) == "1m 0s"
-    assert _format_relative_time(90) == "1m 30s"
-    assert _format_relative_time(3599) == "59m 59s"
-
-
-def test_format_relative_time_hours():
-    assert _format_relative_time(3600) == "1h 0m"
-    assert _format_relative_time(5400) == "1h 30m"
-    assert _format_relative_time(86399) == "23h 59m"
-
-
-def test_format_relative_time_days():
-    assert _format_relative_time(86400) == "1d 0h"
-    assert _format_relative_time(86400 * 2 + 3600 * 5) == "2d 5h"
-    assert _format_relative_time(86400 * 6 + 3600 * 23) == "6d 23h"
-
-
-def test_format_relative_time_weeks():
-    assert _format_relative_time(86400 * 7) == "1w"
-    assert _format_relative_time(86400 * 10) == "1w 3d"
-    assert _format_relative_time(86400 * 14) == "2w"
-    assert _format_relative_time(86400 * 21 + 86400 * 2) == "3w 2d"
-
-
-def test_format_relative_time_with_suffix():
-    assert _format_relative_time(0.5, suffix=" ago") == "500ms ago"
-    assert _format_relative_time(5.0, suffix=" ago") == "5.0s ago"
-    assert _format_relative_time(120, suffix=" ago") == "2m 0s ago"
-    assert _format_relative_time(7200, suffix=" ago") == "2h 0m ago"
-    assert _format_relative_time(86400, suffix=" ago") == "1d 0h ago"
-    assert _format_relative_time(86400 * 7, suffix=" ago") == "1w ago"
-    assert _format_relative_time(86400 * 10, suffix=" ago") == "1w 3d ago"
 
 
 # ============================================================================
