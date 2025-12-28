@@ -286,6 +286,21 @@ keep_in_memory = -2
         load_config(toml)
 
 
+def test_keep_history_removed():
+    """keep_history was removed in v0.5.0, should raise error."""
+    toml = io.BytesIO(
+        b"""
+[[command]]
+name = "Test"
+command = "echo"
+triggers = []
+keep_history = 5
+"""
+    )
+    with pytest.raises(ConfigValidationError, match="'keep_history' was removed in v0.5.0"):
+        load_config(toml)
+
+
 def test_invalid_debounce_mode():
     """Invalid debounce_mode should fail validation."""
     toml = io.BytesIO(

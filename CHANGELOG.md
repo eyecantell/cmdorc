@@ -5,7 +5,7 @@ All notable changes to cmdorc will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.5.0]
 
 ### Added
 - **`time_ago_str` property** - Human-readable relative time since completion
@@ -18,6 +18,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Centralizes duration/time-ago formatting logic
   - Supports weeks (previously `duration_str` only went up to days)
   - Used by both `duration_str` and `time_ago_str`
+
+### Removed
+- **BREAKING: `keep_history` removed from CommandConfig** - Use `keep_in_memory` instead
+  - Deprecated in v0.3.0, now raises `ConfigValidationError` if used
+  - Migration: Replace `keep_history = N` with `keep_in_memory = N` in `[[command]]` sections
 
 ## [0.4.0]
 
