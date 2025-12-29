@@ -301,6 +301,20 @@ class CommandRuntime:
         self.verify_registered(name)
         return self._latest_result.get(name)
 
+    def set_latest_result(self, command_name: str, result: RunResult) -> None:
+        """
+        Set the latest result for a command (used by history loader).
+
+        Args:
+            command_name: Command name
+            result: RunResult to set as latest
+
+        Raises:
+            KeyError: If command not registered
+        """
+        self.verify_registered(command_name)
+        self._latest_result[command_name] = result
+
     def get_history(self, name: str, limit: int = 10) -> list[RunResult]:
         """
         Get command history (bounded by keep_in_memory setting).

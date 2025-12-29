@@ -142,9 +142,9 @@ class HistoryLoader:
 
             # Update latest_result with newest (last one will be the newest)
             if result.end_time:
-                current_latest = self._runtime._latest_result.get(command_name)
+                current_latest = self._runtime.get_latest_result(command_name)
                 if not current_latest or (result.end_time > current_latest.end_time):
-                    self._runtime._latest_result[command_name] = result
+                    self._runtime.set_latest_result(command_name, result)
 
         limit_str = "unlimited" if memory_limit == -1 else str(memory_limit)
         logger.debug(

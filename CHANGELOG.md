@@ -46,6 +46,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Fixes potential RuntimeError when iterating handles while concurrent writes occur
   - Added documentation to sync read methods explaining GIL-based safety
 
+- **Better encapsulation in history loader** - Removed direct private field access
+  - Added `set_latest_result()` method to `CommandRuntime`
+  - `history_loader.py` now uses public API instead of mutating `_latest_result` dict directly
+  - Improves maintainability and follows encapsulation best practices
+
+- **Improved variable resolution error messages** - Now shows which variables failed
+  - Error messages now extract and display unresolved variable names
+  - Example: "Remaining unresolved variables in '{{ base }}/{{ subdir }}': ['subdir']"
+  - Helps users identify circular dependencies or missing variable definitions
+  - Much easier debugging experience for complex variable templates
+
+- **Production-safe error checking in RunHandle** - Replaced assertion with explicit check
+  - Changed `assert self._completion_event is not None` to explicit RuntimeError
+  - Assertions can be disabled with Python's `-O` flag, making code unreliable in production
+  - Now raises clear error message: "Internal error: completion event not initialized"
+  - More robust error handling even when optimizations are enabled
+
+- **Code cleanup** - Removed unused `_NO_LOOP` sentinel from run_handle.py
+  - Dead code removal for cleaner codebase
+  - No functional changes
+
 ## [0.6.0]
 
 ### Added

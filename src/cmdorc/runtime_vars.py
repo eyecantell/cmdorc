@@ -83,8 +83,12 @@ def resolve_double_brace_vars(value: str, vars_dict: dict[str, str], *, max_dept
 
     # If still unresolved, we hit a cycle or unresolvable nested structure
     if VAR_PATTERN.search(value):
+        # Extract unresolved variable names to help with debugging
+        unresolved_vars = re.findall(r'\{\{\s*(\w+)\s*\}\}', value)
         raise ValueError(
-            f"Unresolved nested variables remain in '{value}' after {max_depth} passes"
+            f"Failed to resolve variables after {max_depth} passes. "
+            f"Remaining unresolved variables in '{value}': {unresolved_vars}. "
+            f"This may indicate a circular dependency or missing variable definition."
         )
 
     return value

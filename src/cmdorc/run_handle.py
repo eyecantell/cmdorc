@@ -14,7 +14,6 @@ import asyncio
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Final
 
 from .run_result import ResolvedCommand, RunResult, RunState
 
@@ -37,9 +36,6 @@ class RunHandle:
     The orchestrator calls executor.cancel_run() directly, and RunHandle
     observes when the result becomes finalized.
     """
-
-    # Internal sentinel to detect if in sync context (no loop)
-    _NO_LOOP: Final = object()
 
     def __init__(self, result: RunResult) -> None:
         """
@@ -98,7 +94,12 @@ class RunHandle:
             if self._completion_event is None:
                 self._setup_completion_event()
 
-            assert self._completion_event is not None
+            if self._completion_event is None:
+                # This should never happen, but handle gracefully
+                raise RuntimeError(
+                    "Internal error: completion event not initialized. "
+                    "This is a bug - please report it."
+                )
             await self._completion_event.wait()
 
             # Resolve future if not already done

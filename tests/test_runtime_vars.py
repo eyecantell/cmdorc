@@ -147,7 +147,7 @@ def test_resolve_runtime_vars_missing_enriched_error():
 def test_resolve_runtime_vars_cycle_detected():
     """resolve_runtime_vars detects variable cycles."""
     vars_dict = {"a": "{{ b }}", "b": "{{ a }}"}
-    with pytest.raises(ValueError, match="Unresolved nested variables remain"):
+    with pytest.raises(ValueError, match="Failed to resolve variables after .* passes"):
         resolve_runtime_vars("{{ a }}", vars_dict)
 
 
@@ -161,7 +161,7 @@ def test_resolve_runtime_vars_exceeds_max_depth():
         else:
             vars_dict[f"v{i}"] = "{{ v" + str(i + 1) + " }}"
 
-    with pytest.raises(ValueError, match="Unresolved nested variables remain"):
+    with pytest.raises(ValueError, match="Failed to resolve variables after .* passes"):
         resolve_runtime_vars("{{ v0 }}", vars_dict, max_depth=10)
 
 
