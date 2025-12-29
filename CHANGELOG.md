@@ -13,6 +13,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Automatic `shutdown()` on exit (normal or exception)
   - Existing usage patterns unchanged (purely additive)
 
+### Fixed
+
+- **CRITICAL: Type annotation mismatch in RunHandle** - `start_time` and `end_time` properties
+  - Corrected type annotations from `float | None` to `datetime.datetime | None`
+  - Updated docstrings to accurately describe return type (datetime objects, not Unix timestamps)
+  - This was a documentation bug - runtime behavior was always datetime, now annotations match reality
+  - Fixes type checker errors and IDE autocomplete
+
+- **CRITICAL: Incorrect timestamp calculation in debounce error handling**
+  - Fixed `_trigger_run_command()` mixing incompatible time sources (monotonic loop time vs wall-clock time)
+  - Now correctly uses `decision.elapsed_ms` already calculated by `ConcurrencyPolicy`
+  - Debounce errors now report accurate elapsed times instead of nonsensical values
+  - Also improved error handling to use explicit `decision.disallow_reason` instead of guessing
+
 ## [0.6.0]
 
 ### Added

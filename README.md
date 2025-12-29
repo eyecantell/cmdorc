@@ -208,8 +208,8 @@ handle.success          # bool or None
 handle.output           # str (stdout + stderr)
 handle.duration_str     # "1m 23s", "452ms", "1h 5m", "1d 3h"
 handle.is_finalized     # bool: True if completed
-handle.start_time       # float or None: Unix timestamp
-handle.end_time         # float or None: Unix timestamp
+handle.start_time       # datetime.datetime or None: When run started
+handle.end_time         # datetime.datetime or None: When run ended
 handle.comment          # str: Cancellation reason or note
 handle.resolved_command # ResolvedCommand | None: Fully resolved command details
                         #   (command string, cwd, env vars, timeout, variable snapshot)

@@ -407,19 +407,20 @@ class CommandOrchestrator:
         decision = self._policy.decide(config, active_runs, last_start_time, last_completion_time)
 
         if not decision.allow:
-            # Policy denied - determine reason
-            if config.debounce_in_ms > 0 and last_start_time is not None:
-                elapsed_ms = (
-                    asyncio.get_event_loop().time() * 1000 - last_start_time.timestamp() * 1000
-                )
-                raise DebounceError(config.name, config.debounce_in_ms, elapsed_ms)
-            else:
+            # Policy already determined the reason and calculated elapsed_ms correctly
+            logger.debug(f"Policy denied '{config.name}': {decision.disallow_reason}")
+            if decision.disallow_reason == "debounce":
+                raise DebounceError(config.name, config.debounce_in_ms, decision.elapsed_ms)
+            elif decision.disallow_reason == "concurrency_limit":
                 raise ConcurrencyLimitError(
                     command_name=config.name,
                     active_count=len(active_runs),
                     max_concurrent=config.max_concurrent,
                     policy=config.on_retrigger,
                 )
+            else:
+                # This should never happen (exhaustive match), but handle gracefully
+                raise RuntimeError(f"Unknown disallow reason in {decision}")
 
         # Cancel runs if needed
         for run_to_cancel in decision.runs_to_cancel:

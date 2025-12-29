@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from datetime import datetime
 from pathlib import Path
 from typing import Final
 
@@ -202,13 +203,13 @@ class RunHandle:
         return self._result.is_finalized
 
     @property
-    def start_time(self) -> float | None:
-        """Unix timestamp when run started, or None if not yet started."""
+    def start_time(self) -> datetime | None:
+        """Datetime when run started, or None if not yet started."""
         return self._result.start_time
 
     @property
-    def end_time(self) -> float | None:
-        """Unix timestamp when run ended, or None if not yet finished."""
+    def end_time(self) -> datetime | None:
+        """Datetime when run ended, or None if not yet finished."""
         return self._result.end_time
 
     @property
