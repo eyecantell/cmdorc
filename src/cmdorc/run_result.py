@@ -117,6 +117,9 @@ class RunResult:
     output_file: Path | None = None
     """Path to output text file (if output_storage enabled)."""
 
+    output_write_error: str | None = None
+    """Error message if output files failed to write, None otherwise."""
+
     # ------------------------------------------------------------------ #
     # Comment
     # ------------------------------------------------------------------ #

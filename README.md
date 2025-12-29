@@ -215,6 +215,7 @@ handle.resolved_command # ResolvedCommand | None: Fully resolved command details
                         #   (command string, cwd, env vars, timeout, variable snapshot)
 handle.metadata_file    # Path | None: Path to metadata.toml (if output_storage enabled)
 handle.output_file      # Path | None: Path to output file (if output_storage enabled)
+handle.output_write_error  # str | None: Error if output files failed to write
 ```
 
 ### RunResult (Accessed via RunHandle._result or history)

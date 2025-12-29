@@ -13,6 +13,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Automatic `shutdown()` on exit (normal or exception)
   - Existing usage patterns unchanged (purely additive)
 
+- **`output_write_error` property** - Expose output file write failures through API
+  - New `output_write_error` field on `RunResult` and `RunHandle`
+  - Captures error message when output files fail to write (previously only logged)
+  - Allows users to detect filesystem issues without breaking command execution
+  - Returns `None` if write succeeded or wasn't attempted
+
+### Changed
+
+- **`off_event()` now returns bool** - Previously returned `None` despite docstring claiming `bool`
+  - Returns `True` if callback was found and removed, `False` otherwise
+  - Purely additive change (existing code ignoring return value continues to work)
+  - Fixes misleading documentation and provides useful feedback
+
 ### Fixed
 
 - **CRITICAL: Type annotation mismatch in RunHandle** - `start_time` and `end_time` properties
@@ -26,6 +39,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Now correctly uses `decision.elapsed_ms` already calculated by `ConcurrencyPolicy`
   - Debounce errors now report accurate elapsed times instead of nonsensical values
   - Also improved error handling to use explicit `decision.disallow_reason` instead of guessing
+
+- **Race condition in handle registration** - `run_command()` wrote to `_handles` dict without lock
+  - Moved handle registration outside orchestrator lock and use `_register_handle()` helper
+  - Now properly uses `_handles_lock` for thread-safe dictionary access
+  - Fixes potential RuntimeError when iterating handles while concurrent writes occur
+  - Added documentation to sync read methods explaining GIL-based safety
 
 ## [0.6.0]
 

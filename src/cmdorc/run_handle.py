@@ -267,6 +267,16 @@ class RunHandle:
         """
         return self._result.output_file
 
+    @property
+    def output_write_error(self) -> str | None:
+        """
+        Error message if output files failed to write.
+
+        Returns:
+            Error message string if file write failed, None if write succeeded or not attempted
+        """
+        return self._result.output_write_error
+
     # ========================================================================
     # Internal Access (Advanced Usage)
     # ========================================================================

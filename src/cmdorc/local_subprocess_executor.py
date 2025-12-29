@@ -397,7 +397,9 @@ class LocalSubprocessExecutor(CommandExecutor):
             logger.debug(f"Wrote output files to {run_dir}")
 
         except Exception as e:
-            logger.error(f"Failed to write output files for run {result.run_id[:8]}: {e}")
+            error_msg = f"Failed to write output files: {e}"
+            logger.error(f"{error_msg} for run {result.run_id[:8]}")
+            result.output_write_error = error_msg
             # Don't re-raise - file writing errors shouldn't fail the run
 
     def __repr__(self) -> str:

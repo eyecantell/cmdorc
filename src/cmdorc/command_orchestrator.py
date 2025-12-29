@@ -205,11 +205,11 @@ class CommandOrchestrator:
             # Register in runtime
             self._runtime.add_live_run(result)
 
-            # Create and register handle
-            handle = RunHandle(result)
-            self._handles[result.run_id] = handle
-
         # Release lock before starting executor and emitting triggers
+
+        # Create and register handle (thread-safe with handles lock)
+        handle = RunHandle(result)
+        await self._register_handle(handle)
 
         # Emit command_started trigger (non-blocking background task)
         asyncio.create_task(self._emit_auto_trigger(f"command_started:{name}", handle))
@@ -911,6 +911,11 @@ class CommandOrchestrator:
 
         Returns:
             List of active RunHandles for this command
+
+        Note:
+            This method does not acquire _handles_lock (it's a sync method and the lock
+            is async). Dictionary reads are generally safe in CPython due to the GIL.
+            For guaranteed thread-safety, use async methods that acquire the lock.
         """
         active_runs = self._runtime.get_active_runs(name)
         active_ids = {r.run_id for r in active_runs}
@@ -922,6 +927,11 @@ class CommandOrchestrator:
 
         Returns:
             List of all active RunHandles
+
+        Note:
+            This method does not acquire _handles_lock (it's a sync method and the lock
+            is async). Dictionary reads are generally safe in CPython due to the GIL.
+            For guaranteed thread-safety, use async methods that acquire the lock.
         """
         return [h for h in self._handles.values() if not h.is_finalized]
 
@@ -1007,7 +1017,7 @@ class CommandOrchestrator:
         self,
         event_pattern: str,
         callback: Callable,
-    ) -> None:
+    ) -> bool:
         """
         Unregister callback.
 
@@ -1016,11 +1026,12 @@ class CommandOrchestrator:
             callback: Callback to remove
 
         Returns:
-            True if callback was found and removed
+            True if callback was found and removed, False otherwise
         """
         success = self._trigger_engine.unregister_callback(event_pattern, callback)
         if success:
             logger.debug(f"Unregistered callback for event pattern '{event_pattern}'")
+        return success
 
     def set_lifecycle_callback(
         self,
