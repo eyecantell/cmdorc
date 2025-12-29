@@ -1184,3 +1184,15 @@ class CommandOrchestrator:
         Cancels all runs and cleans up resources.
         """
         await self.shutdown(timeout=0, cancel_running=True)
+
+    # ========================================================================
+    # Async Context Manager
+    # ========================================================================
+
+    async def __aenter__(self) -> CommandOrchestrator:
+        """Enter async context manager."""
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
+        """Exit async context manager, ensuring graceful shutdown."""
+        await self.shutdown()

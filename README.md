@@ -20,6 +20,7 @@ Inspired by Make/npm scripts - but instead of file changes, you trigger workflow
 - **Trigger-Based Execution** - Fire any string event → run configured commands
 - **Auto-Events** - `command_started:Lint`, `command_success:Lint`, `command_failed:Tests`, etc.
 - **Full Async + Concurrency Control** - Non-blocking, cancellable, timeout-aware, with debounce
+- **Async Context Manager** - `async with CommandOrchestrator(config) as orch:` for automatic cleanup
 - **Smart Retrigger Policies** - `cancel_and_restart` or `ignore`
 - **Cancellation Triggers** - Auto-cancel commands on certain events
 - **Rich State Tracking** - Live runs, history, durations, output capture
@@ -81,36 +82,36 @@ from cmdorc import CommandOrchestrator, load_config
 
 async def main():
     config = load_config("cmdorc.toml")
-    orchestrator = CommandOrchestrator(config)
 
-    # Trigger a workflow
-    await orchestrator.trigger("changes_applied")  # → Lint → (if success) Tests
+    # Recommended: Use async context manager for automatic cleanup
+    async with CommandOrchestrator(config) as orchestrator:
+        # Trigger a workflow
+        await orchestrator.trigger("changes_applied")  # → Lint → (if success) Tests
 
-    # Run a command and get handle for waiting
-    handle = await orchestrator.run_command("Tests")
-    result = await handle.wait()  # Blocks until complete (with optional timeout)
-    print(f"Tests: {result.state.value} ({result.duration_str})")
+        # Run a command and get handle for waiting
+        handle = await orchestrator.run_command("Tests")
+        result = await handle.wait()  # Blocks until complete (with optional timeout)
+        print(f"Tests: {result.state.value} ({result.duration_str})")
 
-    # Fire-and-forget (no await on handle.wait())
-    handle = await orchestrator.run_command("Lint")  # Starts async
-    # ... do other work ...
-    await handle.wait()  # Wait later if needed
+        # Fire-and-forget (no await on handle.wait())
+        handle = await orchestrator.run_command("Lint")  # Starts async
+        # ... do other work ...
+        await handle.wait()  # Wait later if needed
 
-    # Pass runtime variables for this run only
-    await orchestrator.run_command("Deploy", vars={"env": "production", "region": "us-east-1"})
+        # Pass runtime variables for this run only
+        await orchestrator.run_command("Deploy", vars={"env": "production", "region": "us-east-1"})
 
-    # Get status and history
-    status = orchestrator.get_status("Tests")  # CommandStatus with active runs, etc.
-    history = orchestrator.get_history("Tests", limit=5)  # List[RunResult]
+        # Get status and history
+        status = orchestrator.get_status("Tests")  # CommandStatus with active runs, etc.
+        history = orchestrator.get_history("Tests", limit=5)  # List[RunResult]
 
-    # Cancel running command
-    await orchestrator.cancel_command("Lint", comment="User cancelled")
+        # Cancel running command
+        await orchestrator.cancel_command("Lint", comment="User cancelled")
 
-    # Or cancel everything
-    await orchestrator.cancel_all()
+        # Or cancel everything
+        await orchestrator.cancel_all()
 
-    # Graceful shutdown
-    await orchestrator.shutdown(timeout=30.0, cancel_running=True)
+    # shutdown() called automatically on exit (normal or exception)
 
 asyncio.run(main())
 ```
@@ -247,6 +248,33 @@ orchestrator = CommandOrchestrator(commands)
 ```
 
 **Example:** See `examples/basic/01_hello_world.py` or `examples/basic/02_simple_workflow.py` for programmatic configuration patterns.
+
+### Async Context Manager
+
+Use `async with` for automatic cleanup - `shutdown()` is called automatically on exit (normal or exception):
+
+```python
+async with CommandOrchestrator(config) as orchestrator:
+    await orchestrator.trigger("build")
+    # ... orchestrator is fully functional here ...
+
+# shutdown() called automatically - all running commands cancelled, resources cleaned up
+```
+
+This is the **recommended pattern** for most use cases. Benefits:
+- No need to remember `await orchestrator.shutdown()`
+- Cleanup happens even if exceptions occur
+- Existing usage without `async with` still works (purely additive)
+
+For long-lived applications (TUIs, servers), you can still use manual lifecycle:
+
+```python
+orchestrator = CommandOrchestrator(config)
+try:
+    # ... long-running application ...
+finally:
+    await orchestrator.shutdown(timeout=30.0, cancel_running=True)
+```
 
 ### Output Storage
 
@@ -520,7 +548,6 @@ Contributions welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for:
 MIT License - See [LICENSE](LICENSE) for details
 
 ## Todo
-- Make output file extension configurable (currently hardcoded to .txt) 
 - Move TriggerChain utilities from textual-cmdorc to here.
 - Add optional metrics (see [telemetry](telemetry.md))
 ---

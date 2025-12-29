@@ -1713,6 +1713,40 @@ class TestErrorHandlingAndEdgeCases:
         assert result2["cancelled_count"] == 0
         assert result2["timeout_expired"] is False
 
+    async def test_context_manager_normal_exit(self):
+        """Context manager calls shutdown on normal exit."""
+        config = RunnerConfig(commands=[CommandConfig(name="Test", command="echo hi", triggers=[])])
+        executor = MockExecutor()
+
+        async with CommandOrchestrator(config, executor=executor) as orch:
+            assert orch._is_shutdown is False
+
+        # After exiting context, should be shut down
+        assert orch._is_shutdown is True
+
+    async def test_context_manager_exception(self):
+        """Context manager calls shutdown even on exception."""
+        config = RunnerConfig(commands=[CommandConfig(name="Test", command="echo hi", triggers=[])])
+        executor = MockExecutor()
+
+        with pytest.raises(ValueError, match="test error"):
+            async with CommandOrchestrator(config, executor=executor) as orch:
+                raise ValueError("test error")
+
+        # Should still be shut down despite exception
+        assert orch._is_shutdown is True
+
+    async def test_context_manager_returns_self(self):
+        """Context manager returns self for 'as' binding."""
+        config = RunnerConfig(commands=[CommandConfig(name="Test", command="echo hi", triggers=[])])
+        executor = MockExecutor()
+
+        orchestrator = CommandOrchestrator(config, executor=executor)
+        async with orchestrator as orch:
+            assert orch is orchestrator
+
+        await orchestrator.shutdown()  # Already shut down, but safe to call again
+
     async def test_dispatch_lifecycle_callback_sync_callback(self, orchestrator):
         """_dispatch_lifecycle_callback handles synchronous callbacks."""
         config = CommandConfig(
