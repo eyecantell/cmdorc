@@ -97,6 +97,7 @@ class CommandOrchestrator:
 
         # Lifecycle state
         self._is_shutdown = False
+        self._is_started = False
 
         # Register all commands from config
         for config in runner_config.commands:
@@ -117,6 +118,43 @@ class CommandOrchestrator:
             f"Initialized CommandOrchestrator with {len(runner_config.commands)} commands "
             f"(output_storage_enabled={self._output_storage.is_enabled})"
         )
+
+    async def startup(self) -> None:
+        """
+        Emit orchestrator_started trigger.
+
+        This should be called after __init__ to run startup commands.
+        If using async context manager (__aenter__), this is called automatically.
+
+        Idempotent - calling multiple times has no effect after the first call.
+
+        Example:
+            # Manual pattern:
+            orch = CommandOrchestrator(config)
+            await orch.startup()
+
+            # Context manager pattern (automatic):
+            async with CommandOrchestrator(config) as orch:
+                # startup() already called
+                pass
+
+        Raises:
+            No exceptions - startup command failures are logged but non-fatal
+        """
+        if self._is_started:
+            logger.debug("startup() already called, skipping")
+            return
+
+        self._is_started = True
+        logger.info("Orchestrator startup: emitting orchestrator_started trigger")
+
+        # Create fresh trigger context for startup (no parent chain)
+        context = TriggerContext(seen=set(), history=["orchestrator_started"])
+
+        # Emit startup trigger using standard auto-trigger pattern
+        await self._emit_auto_trigger("orchestrator_started", handle=None, context=context)
+
+        logger.debug("orchestrator_started trigger emitted")
 
     # ========================================================================
     # Execution: Manual
@@ -268,8 +306,8 @@ class CommandOrchestrator:
             OrchestratorShutdownError: If orchestrator is shutting down
             TriggerCycleError: If cycle detected (when loop_detection=True)
         """
-        # Check shutdown state
-        if self._is_shutdown:
+        # Check shutdown state (allow orchestrator_shutdown to bypass)
+        if self._is_shutdown and event_name != "orchestrator_shutdown":
             raise OrchestratorShutdownError("Orchestrator is shutting down")
 
         # Acquire orchestrator lock for critical section (context.seen and context.history)
@@ -540,6 +578,19 @@ class CommandOrchestrator:
             context: Optional TriggerContext for cycle prevention
         """
         try:
+            # Special case: Prevent orchestrator_shutdown from re-triggering during shutdown
+            # Allow the initial orchestrator_shutdown (context.seen will be empty)
+            # But prevent commands triggered by shutdown from re-triggering it
+            if (
+                event_name == "orchestrator_shutdown"
+                and context is not None
+                and "orchestrator_shutdown" in context.seen
+            ):
+                logger.debug(
+                    "Suppressing orchestrator_shutdown re-trigger (already in trigger chain)"
+                )
+                return
+
             # If no context provided but we have a handle, inherit parent's trigger chain
             if context is None and handle is not None:
                 parent_chain = handle._result.trigger_chain
@@ -1133,7 +1184,12 @@ class CommandOrchestrator:
         """
         if self._is_shutdown:
             logger.warning("Shutdown already called")
-            return {"cancelled_count": 0, "completed_count": 0, "timeout_expired": False}
+            return {
+                "cancelled_count": 0,
+                "completed_count": 0,
+                "timeout_expired": False,
+                "shutdown_commands_run": 0,
+            }
 
         self._is_shutdown = True
         cancelled_count = 0
@@ -1141,6 +1197,44 @@ class CommandOrchestrator:
         timeout_expired = False
 
         logger.info("Orchestrator shutdown initiated")
+
+        # Emit orchestrator_shutdown trigger BEFORE cancelling runs
+        # This gives cleanup commands a chance to run
+        logger.debug("Emitting orchestrator_shutdown trigger")
+        context = TriggerContext(seen=set(), history=["orchestrator_shutdown"])
+
+        shutdown_handles = []
+        try:
+            await self._emit_auto_trigger("orchestrator_shutdown", handle=None, context=context)
+
+            # Give shutdown commands a brief window to complete
+            # Collect handles that were triggered by orchestrator_shutdown
+            shutdown_handles = [
+                h
+                for h in self.get_all_active_handles()
+                if "orchestrator_shutdown" in h._result.trigger_chain
+            ]
+
+            if shutdown_handles:
+                shutdown_timeout = min(5.0, timeout / 2)  # Use portion of main timeout
+                logger.debug(
+                    f"Waiting up to {shutdown_timeout}s for {len(shutdown_handles)} shutdown command(s)"
+                )
+                try:
+                    await asyncio.wait_for(
+                        asyncio.gather(
+                            *[h.wait() for h in shutdown_handles], return_exceptions=True
+                        ),
+                        timeout=shutdown_timeout,
+                    )
+                    logger.debug("Shutdown commands completed")
+                except asyncio.TimeoutError:
+                    logger.warning(
+                        f"Shutdown commands timed out after {shutdown_timeout}s, proceeding with shutdown"
+                    )
+        except Exception as e:
+            logger.exception(f"Error in orchestrator_shutdown trigger: {e}")
+            # Continue with shutdown even if trigger fails
 
         if cancel_running:
             cancelled_count = await self.cancel_all("orchestrator shutdown")
@@ -1187,6 +1281,7 @@ class CommandOrchestrator:
             "cancelled_count": cancelled_count,
             "completed_count": completed_count,
             "timeout_expired": timeout_expired,
+            "shutdown_commands_run": len(shutdown_handles),
         }
 
     async def cleanup(self) -> None:
@@ -1202,7 +1297,8 @@ class CommandOrchestrator:
     # ========================================================================
 
     async def __aenter__(self) -> CommandOrchestrator:
-        """Enter async context manager."""
+        """Enter async context manager and emit startup trigger."""
+        await self.startup()
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:

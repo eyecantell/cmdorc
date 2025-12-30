@@ -5,6 +5,20 @@ All notable changes to cmdorc will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Orchestrator Lifecycle Triggers** - New automatic triggers for orchestrator startup and shutdown
+  - `orchestrator_started` - Emitted via `startup()` method or context manager entry
+  - `orchestrator_shutdown` - Emitted during `shutdown()` before cancelling runs
+  - Allows users to configure initialization and cleanup commands
+  - Context manager pattern (`async with`) automatically calls `startup()`
+  - Both triggers use fresh `TriggerContext` for isolation from other trigger chains
+  - Shutdown trigger fires BEFORE active runs are cancelled, giving cleanup commands time to complete
+  - New `startup()` method provides explicit async initialization (idempotent)
+  - Shutdown return dict includes `shutdown_commands_run` count
+
 ## [0.7.0]
 
 ### Added

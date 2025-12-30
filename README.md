@@ -129,6 +129,57 @@ asyncio.run(main())
   - `command_failed:MyCommand` - Command exits non-zero
   - `command_cancelled:MyCommand` - Command was cancelled
 
+### Orchestrator Lifecycle Triggers
+
+cmdorc automatically emits lifecycle events for the orchestrator itself:
+
+| Event Name | When Fired | Example Use Cases |
+|------------|------------|-------------------|
+| `orchestrator_started` | After `startup()` or context manager entry | Initialize databases, load caches, run startup checks |
+| `orchestrator_shutdown` | Before cancelling runs during `shutdown()` | Save state, close connections, archive logs |
+
+#### Usage Patterns
+
+**Recommended: Async Context Manager**
+```python
+async with CommandOrchestrator(config) as orchestrator:
+    # startup() called automatically - orchestrator_started emitted
+    await orchestrator.trigger("build")
+    # ... work ...
+# shutdown() called automatically - orchestrator_shutdown emitted
+```
+
+**Manual Pattern**
+```python
+orchestrator = CommandOrchestrator(config)
+await orchestrator.startup()  # Emit orchestrator_started
+try:
+    await orchestrator.trigger("build")
+    # ... work ...
+finally:
+    await orchestrator.shutdown()  # Emit orchestrator_shutdown
+```
+
+#### Configuration Example
+
+```toml
+[[command]]
+name = "Initialize Database"
+triggers = ["orchestrator_started"]
+command = "python scripts/init_db.py"
+
+[[command]]
+name = "Save State"
+triggers = ["orchestrator_shutdown"]
+command = "python scripts/save_state.py"
+```
+
+**Key Points:**
+- `startup()` must be called explicitly (or use context manager for automatic call)
+- Shutdown trigger fires BEFORE active runs are cancelled
+- Both triggers use fresh `TriggerContext` (isolated from other trigger chains)
+- Errors in lifecycle commands are logged but don't prevent orchestrator operation
+
 ### Lifecycle Example
 
 ```python
@@ -549,7 +600,6 @@ Contributions welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for:
 MIT License - See [LICENSE](LICENSE) for details
 
 ## Todo
-- Move TriggerChain utilities from textual-cmdorc to here.
 - Add optional metrics (see [telemetry](telemetry.md))
 ---
 

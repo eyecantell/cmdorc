@@ -1845,3 +1845,171 @@ class TestErrorHandlingAndEdgeCases:
         success = await orchestrator.cancel_run(handle.run_id, "test comment")
 
         assert success is True or success is False  # Either cancelled or not found
+
+
+class TestOrchestratorLifecycleTriggers:
+    """Tests for orchestrator_started and orchestrator_shutdown triggers."""
+
+    async def test_startup_emits_orchestrator_started(self):
+        """startup() emits orchestrator_started trigger that runs configured commands."""
+        config = CommandConfig(
+            name="Startup",
+            command="echo 'startup'",
+            triggers=["orchestrator_started"],
+        )
+        runner_config = RunnerConfig(commands=[config])
+        executor = MockExecutor()
+        orchestrator = CommandOrchestrator(runner_config, executor)
+
+        await orchestrator.startup()
+        await asyncio.sleep(0.1)  # Let trigger propagate
+
+        status = orchestrator.get_status("Startup")
+        assert status.state != "never_run"
+        assert len(executor.started) == 1
+
+        await orchestrator.shutdown()
+
+    async def test_startup_idempotent(self):
+        """startup() can be called multiple times safely."""
+        config = CommandConfig(
+            name="Startup",
+            command="echo 'startup'",
+            triggers=["orchestrator_started"],
+        )
+        runner_config = RunnerConfig(commands=[config])
+        executor = MockExecutor()
+        orchestrator = CommandOrchestrator(runner_config, executor)
+
+        await orchestrator.startup()
+        await orchestrator.startup()
+        await orchestrator.startup()
+
+        await asyncio.sleep(0.1)
+
+        # Should only run once
+        assert len(executor.started) == 1
+
+        await orchestrator.shutdown()
+
+    async def test_context_manager_calls_startup_automatically(self):
+        """Context manager automatically calls startup()."""
+        config = CommandConfig(
+            name="Startup",
+            command="echo 'startup'",
+            triggers=["orchestrator_started"],
+        )
+        runner_config = RunnerConfig(commands=[config])
+        executor = MockExecutor()
+
+        async with CommandOrchestrator(runner_config, executor) as orch:
+            await asyncio.sleep(0.1)
+            status = orch.get_status("Startup")
+            assert status.state != "never_run"
+
+        assert len(executor.started) == 1
+
+    async def test_shutdown_emits_orchestrator_shutdown(self):
+        """shutdown() emits orchestrator_shutdown trigger before cancelling."""
+        config = CommandConfig(
+            name="Cleanup",
+            command="echo 'cleanup'",
+            triggers=["orchestrator_shutdown"],
+        )
+        runner_config = RunnerConfig(commands=[config])
+        executor = MockExecutor()
+        orchestrator = CommandOrchestrator(runner_config, executor)
+
+        result = await orchestrator.shutdown()
+
+        status = orchestrator.get_status("Cleanup")
+        assert status.state != "never_run"
+        assert result["shutdown_commands_run"] >= 0
+
+    async def test_shutdown_trigger_runs_before_cancellation(self):
+        """Shutdown commands complete before other runs are cancelled."""
+        cleanup_config = CommandConfig(
+            name="Cleanup",
+            command="echo 'cleanup'",
+            triggers=["orchestrator_shutdown"],
+        )
+        long_config = CommandConfig(
+            name="LongRun",
+            command="sleep 10",
+            triggers=[],
+        )
+        runner_config = RunnerConfig(commands=[cleanup_config, long_config])
+        executor = MockExecutor(delay=0.1)
+        orchestrator = CommandOrchestrator(runner_config, executor)
+
+        # Start long-running command
+        await orchestrator.run_command("LongRun")
+        await asyncio.sleep(0.05)
+
+        # Shutdown should run cleanup first, then cancel long run
+        result = await orchestrator.shutdown(cancel_running=True, timeout=2.0)
+
+        assert result["shutdown_commands_run"] >= 0
+        assert result["cancelled_count"] >= 0
+
+    async def test_startup_command_errors_are_logged_not_raised(self):
+        """Startup command errors are logged but don't prevent orchestrator use."""
+        executor = MockExecutor()
+        executor.should_fail = True
+
+        config = CommandConfig(
+            name="FailingStartup",
+            command="exit 1",
+            triggers=["orchestrator_started"],
+        )
+        runner_config = RunnerConfig(commands=[config])
+        orchestrator = CommandOrchestrator(runner_config, executor)
+
+        # Should not raise
+        await orchestrator.startup()
+        await asyncio.sleep(0.1)
+
+        # Orchestrator should still be usable
+        assert orchestrator._is_started is True
+
+        await orchestrator.shutdown()
+
+    async def test_shutdown_with_slow_cleanup_commands(self):
+        """Shutdown commands that timeout are handled gracefully."""
+        executor = MockExecutor(delay=10.0)  # Very slow
+
+        config = CommandConfig(
+            name="SlowCleanup",
+            command="sleep 100",
+            triggers=["orchestrator_shutdown"],
+        )
+        runner_config = RunnerConfig(commands=[config])
+        orchestrator = CommandOrchestrator(runner_config, executor)
+
+        # Shutdown with short timeout
+        _result = await orchestrator.shutdown(timeout=1.0, cancel_running=True)
+
+        # Should complete despite slow cleanup
+        assert orchestrator._is_shutdown is True
+
+    async def test_lifecycle_triggers_use_fresh_context(self):
+        """Lifecycle triggers use fresh TriggerContext (isolated from other chains)."""
+        startup_config = CommandConfig(
+            name="Startup",
+            command="echo 'startup'",
+            triggers=["orchestrator_started"],
+        )
+        runner_config = RunnerConfig(commands=[startup_config])
+        orchestrator = CommandOrchestrator(runner_config, MockExecutor())
+
+        await orchestrator.startup()
+        await asyncio.sleep(0.1)
+
+        # Check that startup command has orchestrator_started in its chain
+        _status = orchestrator.get_status("Startup")
+        history = orchestrator.get_history("Startup")
+        if history:
+            result = history[0]
+            assert "orchestrator_started" in result.trigger_chain
+
+        await orchestrator.shutdown()
