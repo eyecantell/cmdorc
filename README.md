@@ -3,6 +3,7 @@
 [![PyPI version](https://badge.fury.io/py/cmdorc.svg)](https://badge.fury.io/py/cmdorc)
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![CI](https://github.com/eyecantell/cmdorc/actions/workflows/ci.yml/badge.svg)](https://github.com/eyecantell/cmdorc/actions/runs/20610660160)
 [![Tests](https://img.shields.io/badge/tests-439%20passing-brightgreen)](https://github.com/eyecantell/cmdorc/tree/main/tests)
 [![Coverage](https://img.shields.io/badge/coverage-94%25-brightgreen)](https://github.com/eyecantell/cmdorc)
 [![Downloads](https://pepy.tech/badge/cmdorc)](https://pepy.tech/project/cmdorc)
