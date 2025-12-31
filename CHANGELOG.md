@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Multi-File Config Support** - Load and merge multiple TOML config files
+  - New `load_configs(paths)` function for loading multiple files
+  - Variables: Global merge with last-in-wins, warns on override
+  - Commands: Accumulated from all files, errors on duplicate names
+  - Output storage: Global merge with last-in-wins, warns on override
+  - Use cases: team environments, multiple environments (dev/staging/prod), feature separation
+  - Backward compatible: `load_config()` now wraps `load_configs([path])`
+  - Example: `config = load_configs(["base.toml", "tests.toml", "build.toml"])`
+
+- **Per-Command Output Storage Overrides** - Customize retention and file extension per command
+  - New `keep_history` field on `CommandConfig` (overrides global `output_storage.keep_history`)
+  - New `output_extension` field on `CommandConfig` (overrides global `output_storage.output_extension`)
+  - Values passed through `ResolvedCommand` to executor
+  - Validation: `keep_history >= -1`, `output_extension` starts with "."
+  - Use cases: keep more test history, use .json for benchmarks, unlimited retention for audits
+  - Example: `[[command]]\nname = "Tests"\nkeep_history = 50\noutput_extension = ".log"`
+
 - **Orchestrator Lifecycle Triggers** - New automatic triggers for orchestrator startup and shutdown
   - `orchestrator_started` - Emitted via `startup()` method or context manager entry
   - `orchestrator_shutdown` - Emitted during `shutdown()` before cancelling runs

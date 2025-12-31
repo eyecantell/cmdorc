@@ -33,6 +33,8 @@ class ResolvedCommand:
     env: dict[str, str]
     timeout_secs: int | None
     vars: dict[str, str]
+    keep_history: int | None = None
+    output_extension: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to JSON-serializable dict."""
@@ -42,6 +44,8 @@ class ResolvedCommand:
             "env": self.env.copy(),
             "timeout_secs": self.timeout_secs,
             "vars": self.vars.copy(),
+            "keep_history": self.keep_history,
+            "output_extension": self.output_extension,
         }
 
 

@@ -174,7 +174,7 @@ triggers = []
 """
         )
     )
-    assert "Loaded 1 variables as templates" in caplog.text
+    assert "Loaded 1 config files: 1 commands, 1 variables" in caplog.text
 
 
 def test_from_pathlib_path(tmp_path: Path):

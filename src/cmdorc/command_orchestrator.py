@@ -1112,6 +1112,8 @@ class CommandOrchestrator:
         Deletes oldest run directories if count exceeds keep_history setting.
         Called BEFORE starting new runs to make room for the incoming run.
 
+        Uses per-command keep_history if set, otherwise uses global setting.
+
         IMPORTANT: Deletion happens before the new run starts, so if the run
         fails to start (e.g., executor error, policy denial), old data is
         already deleted. This is intentional to prevent exceeding storage limits.
@@ -1122,8 +1124,19 @@ class CommandOrchestrator:
         import shutil
         from pathlib import Path
 
-        # Skip if output storage disabled or unlimited
-        if not self._output_storage.is_enabled or self._output_storage.keep_history <= 0:
+        # Get effective keep_history (per-command override or global)
+        config = self._runtime.get_command(command_name)
+        if config is None:
+            return  # Command not found
+
+        effective_keep_history = (
+            config.keep_history
+            if config.keep_history is not None
+            else self._output_storage.keep_history
+        )
+
+        # Skip if disabled or unlimited
+        if effective_keep_history == 0 or effective_keep_history < 0:
             return
 
         # Build directory path for this command
@@ -1144,10 +1157,13 @@ class CommandOrchestrator:
             return
 
         # Delete oldest if we're at or above keep_history (to make room for new run)
-        keep_history = self._output_storage.keep_history
-        if len(run_dirs) >= keep_history:
+        if len(run_dirs) >= effective_keep_history:
             # Keep newest (keep_history-1) to make room for the new run we're about to create
-            to_delete = run_dirs[: -(keep_history - 1)] if keep_history > 1 else run_dirs
+            to_delete = (
+                run_dirs[: -(effective_keep_history - 1)]
+                if effective_keep_history > 1
+                else run_dirs
+            )
 
             for run_dir in to_delete:
                 try:

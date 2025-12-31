@@ -269,4 +269,6 @@ def prepare_resolved_command(
         env=final_env,
         timeout_secs=config.timeout_secs,
         vars=merged_vars.copy(),  # Frozen snapshot for this run
+        keep_history=config.keep_history,
+        output_extension=config.output_extension,
     )

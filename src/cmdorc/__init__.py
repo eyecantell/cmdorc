@@ -15,7 +15,7 @@ from .exceptions import (
     OrchestratorShutdownError,
     TriggerCycleError,
 )
-from .load_config import load_config
+from .load_config import load_config, load_configs
 from .local_subprocess_executor import LocalSubprocessExecutor
 from .mock_executor import MockExecutor
 from .run_handle import RunHandle
@@ -34,6 +34,7 @@ __all__ = [
     "CommandStatus",
     "ConcurrencyPolicy",
     "load_config",
+    "load_configs",
     "NewRunDecision",
     "OutputStorageConfig",
     "ResolvedCommand",

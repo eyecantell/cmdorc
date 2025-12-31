@@ -221,6 +221,26 @@ class CommandConfig:
     Use with caution.
     """
 
+    keep_history: int | None = None
+    """
+    Per-command override for OutputStorageConfig.keep_history.
+    If set, this command uses its own retention count instead of the global default.
+
+    - None = Use global output_storage.keep_history (default)
+    - 0 = Disabled (no output files for this command)
+    - -1 = Unlimited (keep all output files for this command)
+    - N > 0 = Keep last N runs for this command
+    """
+
+    output_extension: str | None = None
+    """
+    Per-command override for OutputStorageConfig.output_extension.
+    If set, this command uses its own extension instead of the global default.
+
+    - None = Use global output_storage.output_extension (default)
+    - ".log", ".json", etc. = Custom extension (must start with dot)
+    """
+
     def __post_init__(self) -> None:
         if not self.name:
             logger.warning("Invalid config: Command name cannot be empty")
@@ -274,6 +294,25 @@ class CommandConfig:
             validate_trigger(t, allow_wildcards=False)
         for t in self.cancel_on_triggers:
             validate_trigger(t, allow_wildcards=False)
+
+        # ────── Validate per-command output overrides ──────
+        if self.keep_history is not None and self.keep_history < -1:
+            logger.warning(
+                f"Invalid config for '{self.name}': keep_history must be -1 (unlimited), 0, or positive"
+            )
+            raise ConfigValidationError(
+                "keep_history must be -1 (unlimited), 0 (disabled), or positive"
+            )
+
+        if self.output_extension is not None:
+            if not self.output_extension.startswith("."):
+                raise ConfigValidationError(
+                    f"output_extension for '{self.name}' must start with a dot, got: {self.output_extension!r}"
+                )
+            if "/" in self.output_extension or "\\" in self.output_extension:
+                raise ConfigValidationError(
+                    f"output_extension for '{self.name}' cannot contain path separators: {self.output_extension!r}"
+                )
 
 
 @dataclass(frozen=True)

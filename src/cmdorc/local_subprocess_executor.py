@@ -160,7 +160,13 @@ class LocalSubprocessExecutor(CommandExecutor):
                 logger.debug(f"Run {run_id[:8]} failed: {error_msg} (output={len(output)} bytes)")
 
             # ===== Write output files if enabled =====
-            if self._output_storage.is_enabled:
+            # Check both global and per-command keep_history settings
+            effective_keep_history = (
+                resolved.keep_history
+                if resolved.keep_history is not None
+                else self._output_storage.keep_history
+            )
+            if effective_keep_history != 0:
                 self._write_output_files(result)
             # ===== End file writing =====
 
@@ -171,7 +177,13 @@ class LocalSubprocessExecutor(CommandExecutor):
                 await self._kill_process(process)
 
             # ===== Write output files even for cancelled runs (if we captured output) =====
-            if self._output_storage.is_enabled and result.output:
+            # Check both global and per-command keep_history settings
+            effective_keep_history = (
+                resolved.keep_history
+                if resolved.keep_history is not None
+                else self._output_storage.keep_history
+            )
+            if effective_keep_history != 0 and result.output:
                 self._write_output_files(result)
             # ===== End file writing =====
 
@@ -381,8 +393,15 @@ class LocalSubprocessExecutor(CommandExecutor):
             # Create directory
             run_dir.mkdir(parents=True, exist_ok=True)
 
+            # Get effective output extension (command override or global default)
+            output_extension = (
+                result.resolved_command.output_extension
+                if result.resolved_command and result.resolved_command.output_extension is not None
+                else self._output_storage.output_extension
+            )
+
             # Write output file with configurable extension
-            output_filename = f"output{self._output_storage.output_extension}"
+            output_filename = f"output{output_extension}"
             output_path = run_dir / output_filename
             output_path.write_text(result.output or "", encoding="utf-8")
 

@@ -283,6 +283,71 @@ orchestrator = CommandOrchestrator(load_config("cmdorc.toml"))
 
 **Example:** See `examples/basic/03_toml_config/` for a complete TOML-based workflow setup.
 
+### Multi-File Configurations
+
+Split your config across multiple files for better organization:
+
+```python
+from cmdorc import load_configs
+
+config = load_configs(["base.toml", "tests.toml", "build.toml"])
+orchestrator = CommandOrchestrator(config)
+```
+
+**Merge rules:**
+- **Variables** - Global merge, last-in-wins, warns on override
+- **Commands** - Accumulated from all files, errors on duplicate names
+- **Output Storage** - Global merge, last-in-wins, warns on override
+
+**Example structure:**
+```
+project/
+├── base.toml      # Shared variables, output_storage defaults
+├── tests.toml     # Test commands
+└── build.toml     # Build commands
+```
+
+**base.toml:**
+```toml
+[variables]
+root = "/app"
+env = "dev"
+
+[output_storage]
+directory = ".cmdorc/outputs"
+keep_history = 10
+output_extension = ".txt"
+```
+
+**tests.toml:**
+```toml
+[variables]
+test_flags = "-v"
+
+[[command]]
+name = "Unit"
+command = "pytest {{ root }}/tests {{ test_flags }}"
+keep_history = 50  # Override: keep more test history
+```
+
+**build.toml:**
+```toml
+[[command]]
+name = "Compile"
+command = "gcc -o {{ root }}/bin/app main.c"
+output_extension = ".log"  # Override: use .log for builds
+```
+
+**Warnings and errors:**
+- Variable override: `WARNING: Variable 'root' overridden by tests.toml (was: "/app", now: "/other")`
+- Duplicate command: `ConfigValidationError: Duplicate command name 'Tests'`
+
+**Use cases:**
+- **Team environments** - Share base config, personal overrides
+- **Multiple environments** - base + dev/staging/prod configs
+- **Feature separation** - tests, builds, deploys in separate files
+- **Modular workflows** - compose configs like building blocks
+
 ### Or Pass Programmatically
 
 ```python
@@ -335,7 +400,7 @@ Automatically persist command outputs to disk with configurable retention:
 ```toml
 [output_storage]
 directory = ".cmdorc/outputs"           # Where to store files (default: .cmdorc/outputs)
-keep_history = 10                       # Keep last 10 runs per command
+keep_history = 10                       # Keep last 10 runs per command (global default)
 output_extension = ".log"               # Custom extension (default: .txt)
 
 # Files are always organized as: {command_name}/{run_id}/
@@ -346,6 +411,40 @@ output_extension = ".log"               # Custom extension (default: .txt)
 # keep_history = -1   # Unlimited (keep all files, never delete)
 # keep_history = N    # Keep last N runs (oldest deleted automatically)
 ```
+
+#### Per-Command Output Overrides
+
+Override retention and file extension for specific commands:
+
+```toml
+[output_storage]
+directory = ".cmdorc/outputs"
+keep_history = 10                       # Global default: 10 runs
+output_extension = ".txt"               # Global default: .txt
+
+[[command]]
+name = "Tests"
+command = "pytest tests/"
+keep_history = 50                       # Override: keep more test history
+output_extension = ".log"               # Override: use .log extension
+
+[[command]]
+name = "Build"
+command = "make build"
+# No override: uses global defaults (10 runs, .txt extension)
+
+[[command]]
+name = "Benchmark"
+command = "python benchmark.py"
+keep_history = -1                       # Override: unlimited (never delete)
+output_extension = ".json"              # Override: JSON format for parsing
+```
+
+**How it works:**
+- Per-command values override global `output_storage` defaults
+- `directory` is global only (organizational choice)
+- If command doesn't specify, falls back to global value
+- Validation: `keep_history >= -1`, `output_extension` starts with "."
 
 **File Structure:**
 ```
