@@ -5,6 +5,17 @@ All notable changes to cmdorc will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.1]
+
+### Fixed
+
+- **History ordering corrected** - `get_history()` now returns results in reverse chronological order (most recent first)
+  - Previously had inconsistent documentation: `CommandRuntime` said "most recent last", `CommandOrchestrator` said "reverse chronological"
+  - Implementation now matches `CommandOrchestrator` documentation: most recent run is at index 0
+  - Improves UX: users can access latest run as `history[0]` instead of `history[-1]`
+  - Running commands are stored separately in `_active_runs` and never dropped by history retention limits
+  - Updated 5 tests to reflect new ordering
+
 ## [0.8.0]
 
 ### Added

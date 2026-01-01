@@ -665,9 +665,13 @@ keep_in_memory = 10  # Keep last 10 runs for debugging
 ```
 
 ```python
-history = orchestrator.get_history("Tests")
+# Get command history (most recent first)
+history = orchestrator.get_history("Tests", limit=10)
 for result in history:
     print(f"{result.run_id}: {result.state.value} in {result.duration_str}")
+
+# Access most recent run
+latest = history[0] if history else None
 ```
 
 **Example:** See `examples/basic/05_status_and_history.py` for status tracking and history introspection patterns.
@@ -700,9 +704,6 @@ Contributions welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for:
 MIT License - See [LICENSE](LICENSE) for details
 
 ## Todo
-- Fix history ordering (seems to be broken in command_runtime)
-- Make sure running commands are always kept in memory (despite keep_in_memory setting)
-- Can we trigger a refresh of the TUI from outside the TUI?  This would be good when LLM adds commands
 - Add optional metrics (see [telemetry](telemetry.md))
 ---
 

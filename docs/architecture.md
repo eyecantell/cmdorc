@@ -583,6 +583,8 @@ class CommandStatus:
 2. History deque has `maxlen=keep_history`
 3. Append happens in completion order (not start order)
 4. History is bounded per command independently
+5. `get_history()` returns results in **reverse chronological order** (most recent first)
+6. Running commands are stored separately in `_active_runs` and never dropped by history retention
 
 ---
 

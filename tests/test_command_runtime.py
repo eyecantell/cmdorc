@@ -281,7 +281,8 @@ def test_mark_run_complete_adds_to_history(runtime, config_with_history):
 
     history = runtime.get_history(config_with_history.name)
     assert len(history) == 3
-    assert history == runs
+    # History is in reverse chronological order (most recent first)
+    assert history == list(reversed(runs))
 
 
 def test_mark_run_complete_respects_maxlen(runtime, config_with_history):
@@ -298,8 +299,8 @@ def test_mark_run_complete_respects_maxlen(runtime, config_with_history):
 
     history = runtime.get_history(config_with_history.name)
     assert len(history) == 5
-    # Should contain last 5 runs
-    assert history == runs[-5:]
+    # Should contain last 5 runs in reverse chronological order (most recent first)
+    assert history == list(reversed(runs[-5:]))
 
 
 def test_mark_run_complete_no_history(runtime, config_no_history):
@@ -367,9 +368,9 @@ def test_get_history_with_limit(runtime, config_with_history):
     # Request only last 2
     history = runtime.get_history(config_with_history.name, limit=2)
     assert len(history) == 2
-    # Check that runs returned are the most recent ones
-    assert history[0].run_id == "run-3"
-    assert history[1].run_id == "run-4"
+    # Check that runs returned are the most recent ones (reverse chronological)
+    assert history[0].run_id == "run-4"  # Most recent first
+    assert history[1].run_id == "run-3"  # Second most recent
 
 
 def test_get_history_limit_larger_than_available(runtime, config_with_history):
@@ -593,10 +594,10 @@ def test_update_command_history_reduced(runtime):
     # Update with smaller limit
     runtime.update_command(config2)
 
-    # Should keep only last 2
+    # Should keep only last 2 in reverse chronological order (most recent first)
     history = runtime.get_history(simple_config.name)
     assert len(history) == 2
-    assert history == runs[-2:]
+    assert history == list(reversed(runs[-2:]))
 
 
 def test_update_command_history_increased(runtime, simple_config):
@@ -627,10 +628,10 @@ def test_update_command_history_increased(runtime, simple_config):
     # Update with larger limit
     runtime.update_command(config2)
 
-    # History should still have 2 runs
+    # History should still have 2 runs in reverse chronological order (most recent first)
     history = runtime.get_history(simple_config.name)
     assert len(history) == 2
-    assert history == runs
+    assert history == list(reversed(runs))
 
     # But now we can add more
     for i in range(2, 5):

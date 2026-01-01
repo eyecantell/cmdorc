@@ -256,6 +256,9 @@ class CommandRuntime:
                 self._last_start[name] = datetime.datetime.now()
 
         # Add to history if tracking is enabled
+        # NOTE: Only completed runs are added to history. Active/running runs
+        # are tracked separately in _active_runs, so they can never be dropped
+        # by the bounded deque's maxlen mechanism.
         config = self._configs[name]
         if config.keep_in_memory != 0:  # Both positive and -1 (unlimited)
             history = self._history.get(name)
@@ -324,7 +327,7 @@ class CommandRuntime:
             limit: Maximum number of results to return (default 10). Zero or negative means no limit.
 
         Returns:
-            List of completed RunResults, most recent last.
+            List of completed RunResults in reverse chronological order (most recent first).
             Empty list if no history or keep_in_memory=0.
         Raises:
             KeyError if command not registered
@@ -334,9 +337,18 @@ class CommandRuntime:
         if history is None:
             return []
 
-        # Return up to `limit` most recent runs
-        # deque is ordered by completion time (oldest first)
-        return list(history)[-limit:] if limit > 0 else list(history)
+        # Get the most recent runs and reverse to put most recent first
+        # deque is ordered by completion time (oldest first internally)
+        if limit > 0:
+            # Get last N items and reverse them
+            recent = list(history)[-limit:]
+            recent.reverse()
+            return recent
+        else:
+            # Get all items and reverse them
+            all_history = list(history)
+            all_history.reverse()
+            return all_history
 
     def add_to_history(self, command_name: str, result: RunResult) -> None:
         """

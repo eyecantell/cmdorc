@@ -79,12 +79,14 @@ async def main():
         print(f"  output: {handle.output.strip()}")
     print()
 
-    # Step 7: Get command history
-    print("Command History (last 5 runs):")
+    # Step 7: Get command history (reverse chronological - most recent first)
+    print("Command History (last 5 runs, most recent first):")
     history = orchestrator.get_history("Counter", limit=5)
     print(f"  Total in history: {len(history)}")
     for i, result in enumerate(history, 1):
         print(f"  {i}. run_id={result.run_id}, state={result.state}, success={result.success}")
+    if history:
+        print(f"  Most recent run: {history[0].run_id}")
     print()
 
     # Step 8: Get active handles
