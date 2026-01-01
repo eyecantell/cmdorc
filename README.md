@@ -701,6 +701,7 @@ MIT License - See [LICENSE](LICENSE) for details
 
 ## Todo
 - Fix history ordering (seems to be broken in command_runtime)
+- Make sure running commands are always kept in memory (despite keep_in_memory setting)
 - Can we trigger a refresh of the TUI from outside the TUI?  This would be good when LLM adds commands
 - Add optional metrics (see [telemetry](telemetry.md))
 ---

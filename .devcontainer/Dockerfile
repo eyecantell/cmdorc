@@ -24,6 +24,16 @@ RUN useradd -s /bin/bash -m developer && \
 # Add claude code globally
 RUN npm install -g @anthropic-ai/claude-code
 
+# Install Language Servers (as root, globally available)
+# Python LSP
+RUN pip install --no-cache-dir pyright
+
+# TypeScript/JavaScript LSP
+RUN npm install -g @vtsls/language-server typescript
+
+# Enable LSP tool for claude code
+ENV ENABLE_LSP_TOOL=1
+
 # Switch to developer user for remaining operations
 USER developer
 
