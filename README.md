@@ -700,6 +700,8 @@ Contributions welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for:
 MIT License - See [LICENSE](LICENSE) for details
 
 ## Todo
+- Fix history ordering (seems to be broken in command_runtime)
+- Can we trigger a refresh of the TUI from outside the TUI?  This would be good when LLM adds commands
 - Add optional metrics (see [telemetry](telemetry.md))
 ---
 
