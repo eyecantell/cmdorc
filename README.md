@@ -482,6 +482,76 @@ if handle.metadata_file:
 - ✅ Cancelled commands preserve output if process exits gracefully
 
 
+### Logging
+
+cmdorc uses Python's standard `logging` module. By default, a `NullHandler` is attached (library best practice), so no logs appear unless you configure them.
+
+#### Quick Setup
+
+```python
+from cmdorc import setup_logging
+
+# Console only (default)
+setup_logging(level="DEBUG")
+
+# Console + rotating file
+setup_logging(level="DEBUG", file=True)
+
+# File only (for background tasks)
+setup_logging(level="INFO", console=False, file=True)
+
+# Custom format
+setup_logging(level="INFO", format_string="[%(levelname)s] %(message)s")
+```
+
+#### Integration with Your Logging
+
+cmdorc logs propagate to the root logger by default, so they appear alongside your application logs:
+
+```python
+import logging
+logging.basicConfig(level=logging.INFO)  # Your app's logging
+
+from cmdorc import setup_logging
+setup_logging(level="DEBUG")  # cmdorc logs appear in root handler too
+```
+
+To prevent double-logging (if you add cmdorc handlers AND have root configured):
+
+```python
+setup_logging(level="DEBUG", console=True, propagate=False)
+```
+
+#### Sending Logs for Support
+
+```python
+from cmdorc import setup_logging, get_log_file_path
+
+setup_logging(file=True)
+# ... run your commands ...
+print(f"Log file: {get_log_file_path()}")  # .cmdorc/logs/cmdorc.log
+```
+
+#### Disabling Logging
+
+```python
+from cmdorc import disable_logging
+
+disable_logging()  # Removes all handlers, resets to default state
+```
+
+#### What Gets Logged?
+
+cmdorc logs important events at appropriate levels:
+
+- **DEBUG**: Command starts, policy decisions, state transitions, trigger matching
+- **INFO**: Orchestrator lifecycle (startup/shutdown), configuration changes
+- **WARNING**: Unexpected conditions (cycle detected, config overrides)
+- **ERROR**: Recoverable errors (executor failures, file write errors)
+
+See `examples/advanced/06_logging_setup.py` for more examples.
+
+
 ### Memory vs. Disk History
 
 cmdorc separates **in-memory history** (for API queries) from **disk persistence** (for long-term storage):

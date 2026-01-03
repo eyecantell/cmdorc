@@ -318,6 +318,9 @@ class CommandOrchestrator:
 
             # Check cycle detection
             if not self._trigger_engine.check_cycle(event_name, context):
+                logger.warning(
+                    f"Trigger cycle detected: {event_name} (chain: {' -> '.join(context.history)})"
+                )
                 raise TriggerCycleError(event_name, context.history)
 
             # Add event to context.seen immediately (cycle prevention) and context.history (breadcrumb)
@@ -343,6 +346,11 @@ class CommandOrchestrator:
 
         # Handle triggers matches (execute matching commands)
         trigger_matches = self._trigger_engine.get_matching_commands(event_name, "triggers")
+        if trigger_matches:
+            matched_names = [c.name for c in trigger_matches]
+            logger.debug(
+                f"Trigger '{event_name}' matched {len(trigger_matches)} command(s): {matched_names}"
+            )
         for config in trigger_matches:
             try:
                 await self._trigger_run_command(config, event_name, context)

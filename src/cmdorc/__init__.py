@@ -1,5 +1,10 @@
 __version__ = "0.8.1"
 
+import logging
+
+# Library best practice: add NullHandler to prevent "No handler found" warnings
+logging.getLogger("cmdorc").addHandler(logging.NullHandler())
+
 from .command_config import CommandConfig, OutputStorageConfig, RunnerConfig
 from .command_executor import CommandExecutor
 from .command_orchestrator import CommandOrchestrator
@@ -17,6 +22,7 @@ from .exceptions import (
 )
 from .load_config import load_config, load_configs
 from .local_subprocess_executor import LocalSubprocessExecutor
+from .logging_config import disable_logging, get_log_file_path, setup_logging
 from .mock_executor import MockExecutor
 from .run_handle import RunHandle
 from .run_result import ResolvedCommand, RunResult, RunState
@@ -46,6 +52,10 @@ __all__ = [
     "TriggerEngine",
     # Utilities
     "format_duration",
+    # Logging utilities
+    "disable_logging",
+    "get_log_file_path",
+    "setup_logging",
     # Executors
     "CommandExecutor",
     "LocalSubprocessExecutor",

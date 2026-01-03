@@ -5,6 +5,34 @@ All notable changes to cmdorc will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Logging Configuration Utilities** - Optional helpers for configuring cmdorc logging
+  - New `setup_logging()` function for easy log configuration (console + rotating file support)
+  - New `disable_logging()` function for temporarily silencing logs (useful for tests)
+  - New `get_log_file_path()` helper to locate log files for support
+  - Configurable log propagation (default: True, integrates with user's logging)
+  - Custom format support via `format_string` parameter
+  - File rotation: 10MB files, 5 backups by default
+  - Exported from top-level: `from cmdorc import setup_logging`
+  - Documentation added to README with comprehensive examples
+  - 17 new tests covering all logging functionality
+  - Example: `examples/advanced/06_logging_setup.py`
+
+- **NullHandler by Default** - Library best practice for Python packages
+  - `cmdorc` logger now has a `NullHandler` attached on import
+  - Prevents "No handler found" warnings when logging not configured
+  - Users must explicitly call `setup_logging()` to see logs
+  - Standard practice for well-behaved Python libraries
+
+- **Enhanced Logging Coverage** - Improved observability throughout the codebase
+  - DEBUG: Trigger matching now logged (e.g., "Trigger 'build' matched 3 command(s): ['Test', 'Lint', 'Build']")
+  - WARNING: Cycle detection now logged before raising exception
+  - Fulfills all logging promises documented in README
+  - Helps with debugging trigger workflows and cycle issues
+
 ## [0.8.1]
 
 ### Fixed
