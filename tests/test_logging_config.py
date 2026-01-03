@@ -59,15 +59,11 @@ def test_setup_logging_idempotent(tmp_path):
     # First call
     setup_logging(level="DEBUG", file=True, log_dir=log_dir)
     logger = logging.getLogger("cmdorc")
-    handlers_count_1 = len(
-        [h for h in logger.handlers if not isinstance(h, logging.NullHandler)]
-    )
+    handlers_count_1 = len([h for h in logger.handlers if not isinstance(h, logging.NullHandler)])
 
     # Second call - should replace handlers
     setup_logging(level="INFO", file=True, log_dir=log_dir)
-    handlers_count_2 = len(
-        [h for h in logger.handlers if not isinstance(h, logging.NullHandler)]
-    )
+    handlers_count_2 = len([h for h in logger.handlers if not isinstance(h, logging.NullHandler)])
 
     assert handlers_count_1 == handlers_count_2 == 2
 

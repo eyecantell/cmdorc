@@ -47,9 +47,7 @@ async def main():
     # Example 3: Prevent double-logging (if you have root configured)
     print("\n=== Example 3: With propagate=False ===")
     # Simulate user's root logger config
-    logging.basicConfig(
-        level=logging.DEBUG, format="ROOT: %(levelname)s - %(name)s - %(message)s"
-    )
+    logging.basicConfig(level=logging.DEBUG, format="ROOT: %(levelname)s - %(name)s - %(message)s")
 
     # Without propagate=False, logs would appear twice (once from our handler, once from root)
     # With propagate=False, only our handler outputs

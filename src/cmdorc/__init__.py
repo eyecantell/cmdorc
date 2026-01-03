@@ -2,9 +2,6 @@ __version__ = "0.8.1"
 
 import logging
 
-# Library best practice: add NullHandler to prevent "No handler found" warnings
-logging.getLogger("cmdorc").addHandler(logging.NullHandler())
-
 from .command_config import CommandConfig, OutputStorageConfig, RunnerConfig
 from .command_executor import CommandExecutor
 from .command_orchestrator import CommandOrchestrator
@@ -29,6 +26,9 @@ from .run_result import ResolvedCommand, RunResult, RunState
 from .trigger_engine import TriggerEngine
 from .types import CommandStatus, NewRunDecision, TriggerContext
 from .utils import format_duration
+
+# Library best practice: add NullHandler to prevent "No handler found" warnings
+logging.getLogger("cmdorc").addHandler(logging.NullHandler())
 
 __all__ = [
     # Version
