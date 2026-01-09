@@ -67,7 +67,7 @@ A complete Textual-based terminal UI for cmdorc, providing an interactive comman
 **Quick Start**
 ```bash
 pip install textual-cmdorc
-cmdorc-tui  # generates starter config.toml and launches
+cmdorc-tui  # generates starter commands.toml and/or cmdorc-tui.toml based on user input
 ```
 
 ## Relationship Summary
