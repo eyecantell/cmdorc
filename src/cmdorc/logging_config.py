@@ -107,6 +107,11 @@ def disable_logging() -> None:
     """
     Remove all cmdorc log handlers and reset to default state.
 
+    Removes all handlers from the 'cmdorc' logger except NullHandler,
+    including any handlers added directly by user code. If you need to
+    preserve custom handlers, remove them before calling this function
+    and re-add them afterward.
+
     Useful for tests or temporarily silencing cmdorc logs.
     After calling this, only the NullHandler remains (no output).
     """

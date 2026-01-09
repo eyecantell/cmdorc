@@ -308,8 +308,12 @@ class RunHandle:
     # ========================================================================
     # Cleanup
     # ========================================================================
-    def cleanup(self) -> None:
-        """Cancel the watcher task if active."""
+    async def cleanup(self) -> None:
+        """Cancel the watcher task if active and await its completion."""
         if self._watcher_task and not self._watcher_task.done():
             logger.debug(f"Cleanup cancelling watcher task for RunHandle {self}")
             self._watcher_task.cancel()
+            try:
+                await self._watcher_task
+            except asyncio.CancelledError:
+                pass  # Expected when cancelling

@@ -558,9 +558,6 @@ class CommandOrchestrator:
             # Dispatch lifecycle callback
             await self._dispatch_lifecycle_callback(result.command_name, result.state, handle)
 
-            # Unregister handle
-            await self._unregister_handle(result.run_id)
-
             logger.debug(
                 f"Completed monitoring for run {result.run_id} "
                 f"({result.command_name}, state={result.state})"
@@ -568,6 +565,18 @@ class CommandOrchestrator:
 
         except Exception as e:
             logger.exception(f"Error monitoring run {result.run_id}: {e}")
+            # Ensure result is finalized even on error
+            if not result.is_finalized:
+                result.mark_failed(f"Monitoring error: {e}")
+            # Ensure runtime is updated
+            try:
+                self._runtime.mark_run_complete(result)
+            except (CommandNotFoundError, Exception):
+                pass  # Already cleaned up or command removed
+
+        finally:
+            # Always unregister handle to prevent memory leaks
+            await self._unregister_handle(result.run_id)
 
     async def _emit_auto_trigger(
         self,
@@ -1046,7 +1055,7 @@ class CommandOrchestrator:
         async with self._handles_lock:
             handle = self._handles.pop(run_id, None)
             if handle:
-                handle.cleanup()
+                await handle.cleanup()
 
     # ========================================================================
     # Callbacks
@@ -1292,7 +1301,7 @@ class CommandOrchestrator:
         # Cleanup all remaining handles
         async with self._handles_lock:
             for handle in list(self._handles.values()):
-                handle.cleanup()
+                await handle.cleanup()
             self._handles.clear()
 
         logger.info(

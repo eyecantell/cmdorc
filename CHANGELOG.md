@@ -5,6 +5,17 @@ All notable changes to cmdorc will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **Handle cleanup not properly awaited** - `RunHandle.cleanup()` now async and awaits task cancellation
+  - Changed `cleanup()` from sync to async method in `run_handle.py`
+  - Added `await self._watcher_task` after cancellation with proper exception handling
+  - Updated all call sites in `command_orchestrator.py` to await cleanup
+  - Prevents "Task was destroyed but it is pending!" warnings on shutdown
+  - Fixes dangling task warnings when handles are cleaned up during orchestrator shutdown
+
 ## [0.9.0]
 
 ### Added
