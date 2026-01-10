@@ -1,5 +1,5 @@
 
-# Below are **three outlines**—each intentionally scoped so they feel like *natural extensions* of cmdorc, not a rewrite.
+# Below are **three outlines**-each intentionally scoped so they feel like *natural extensions* of cmdorc, not a rewrite.
 
 ---
 
@@ -7,7 +7,7 @@
 
 ### What it is
 
-An **optional, hosted companion service** that augments local cmdorc runs with persistence, sharing, and visibility—without changing how local execution works.
+An **optional, hosted companion service** that augments local cmdorc runs with persistence, sharing, and visibility-without changing how local execution works.
 
 Cmdorc remains the executor.
 The cloud stores **metadata, artifacts, and views**.
@@ -16,7 +16,7 @@ The cloud stores **metadata, artifacts, and views**.
 
 ### Core Value Proposition
 
-> “Everything you like about cmdorc—but visible across machines and teammates.”
+> “Everything you like about cmdorc-but visible across machines and teammates.”
 
 People pay because:
 
@@ -81,7 +81,7 @@ This preserves your **local-first ethos**.
 
 ### What it is
 
-A **secure execution gateway** for AI agents and automation systems that need to run real commands—but safely.
+A **secure execution gateway** for AI agents and automation systems that need to run real commands-but safely.
 
 Cmdorc becomes:
 
@@ -171,7 +171,7 @@ Cmdorc sits perfectly in the middle.
 
 ### What it is
 
-A set of **enterprise-friendly capabilities** that make cmdorc acceptable inside larger orgs—without changing the core UX.
+A set of **enterprise-friendly capabilities** that make cmdorc acceptable inside larger orgs-without changing the core UX.
 
 Think:
 
@@ -181,7 +181,7 @@ Think:
 
 ### Core Value Proposition
 
-> “We love cmdorc—but can we deploy it safely and supportably?”
+> “We love cmdorc-but can we deploy it safely and supportably?”
 
 ---
 
@@ -247,7 +247,7 @@ Cmdorc’s biggest hidden asset is:
 
 > **A clean separation between “trigger intent” and “execution reality.”**
 
-That’s extremely rare—and extremely valuable.
+That’s extremely rare-and extremely valuable.
 
 ---
 

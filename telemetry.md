@@ -40,7 +40,7 @@
      - `opt-in [--level=minimal|standard|debug]`: Enable, set level, prompt for debug consent if needed, generate IDs.
      - `opt-out`: Disable, delete local files.
      - `show-payload [event]`: Simulate and print a sample payload for the event (e.g., "command_completed").
-   - **Events to Track:** Keep minimal — "orchestrator_started", "command_completed", "trigger_fired" (at higher levels). No more than 5 total.
+   - **Events to Track:** Keep minimal - "orchestrator_started", "command_completed", "trigger_fired" (at higher levels). No more than 5 total.
 
 #### 4. **Payload Structures**
    - **All Levels:** Include `event`, `cmdorc_version`, `python_version`, `os`, `arch`, `anonymous_install_id`, `timestamp`.
@@ -50,7 +50,7 @@
 
 #### 5. **API Endpoint (Server Side)**
    - Minimal FastAPI app (separate repo/project: cmdorc-telemetry-server).
-   - Endpoint: POST /v1/report — accepts JSON, validates schema, stores in DB (e.g., SQLite or Postgres for simplicity).
+   - Endpoint: POST /v1/report - accepts JSON, validates schema, stores in DB (e.g., SQLite or Postgres for simplicity).
    - Response: Optional { "message": "Thanks!", "stats": { "percentile_duration": 87 } } for user value.
    - Security: Rate-limit by install_id; no auth needed since data is anon.
    - Deployment: Heroku/free tier for MVP; log to BigQuery later if scale.
@@ -59,7 +59,7 @@
    - No PII ever.
    - HTTPS only.
    - Local storage: Mode 600 permissions.
-   - Consent: Debug level prompts "This sends hashed command info — confirm? (expires in 30 days)".
+   - Consent: Debug level prompts "This sends hashed command info - confirm? (expires in 30 days)".
    - Auditing: Log all reports locally if LOCAL reporter enabled.
 
 #### 7. **Implementation Steps**
@@ -70,7 +70,7 @@
    - **Phase 5:** Server sketch (optional, but I'll include in telemetry.md).
    - Total Effort: ~1-2 days; no refactoring needed beyond minor Orchestrator additions (maintain docstrings/logs).
 
-This plan is prudent: Adds value without bloat, fully backward-compatible. If it looks solid, we can proceed to code — but let's confirm/refine first.
+This plan is prudent: Adds value without bloat, fully backward-compatible. If it looks solid, we can proceed to code - but let's confirm/refine first.
 
 Now, as requested, here's the **telemetry.md** content. I've modeled it after architecture.md: authoritative, structured, with sections for principles, API, components, etc. This serves as the single source of truth.
 

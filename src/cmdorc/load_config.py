@@ -144,7 +144,7 @@ def load_configs(paths: list[str | Path | BinaryIO | TextIO]) -> RunnerConfig:
             try:
                 cmd = CommandConfig(**cmd_dict)
                 all_commands.append(cmd)
-            except TypeError as e:
+            except (TypeError, ValueError) as e:
                 raise ConfigValidationError(f"Invalid config in [[command]]: {e}") from None
 
     if not all_commands:
@@ -155,7 +155,7 @@ def load_configs(paths: list[str | Path | BinaryIO | TextIO]) -> RunnerConfig:
         output_storage = (
             OutputStorageConfig(**merged_output) if merged_output else OutputStorageConfig()
         )
-    except TypeError as e:
+    except (TypeError, ValueError) as e:
         raise ConfigValidationError(f"Invalid config in [output_storage]: {e}") from None
 
     logger.debug(

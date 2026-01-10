@@ -5,8 +5,8 @@ import logging
 from .command_config import CommandConfig, OutputStorageConfig, RunnerConfig
 from .command_executor import CommandExecutor
 from .command_orchestrator import CommandOrchestrator
-from .command_runtime import CommandRuntime
-from .concurrency_policy import ConcurrencyPolicy
+from .command_runtime import CommandRuntime  # noqa: F401 - accessible but not in __all__
+from .concurrency_policy import ConcurrencyPolicy  # noqa: F401 - accessible but not in __all__
 from .exceptions import (
     CmdorcError,
     CommandNotFoundError,
@@ -16,6 +16,7 @@ from .exceptions import (
     ExecutorError,
     OrchestratorShutdownError,
     TriggerCycleError,
+    VariableResolutionError,
 )
 from .load_config import load_config, load_configs
 from .local_subprocess_executor import LocalSubprocessExecutor
@@ -23,7 +24,7 @@ from .logging_config import disable_logging, get_log_file_path, setup_logging
 from .mock_executor import MockExecutor
 from .run_handle import RunHandle
 from .run_result import ResolvedCommand, RunResult, RunState
-from .trigger_engine import TriggerEngine
+from .trigger_engine import TriggerEngine  # noqa: F401 - accessible but not in __all__
 from .types import CommandStatus, NewRunDecision, TriggerContext
 from .utils import format_duration
 
@@ -36,9 +37,7 @@ __all__ = [
     # Core Components
     "CommandConfig",
     "CommandOrchestrator",
-    "CommandRuntime",
     "CommandStatus",
-    "ConcurrencyPolicy",
     "load_config",
     "load_configs",
     "NewRunDecision",
@@ -49,7 +48,6 @@ __all__ = [
     "RunResult",
     "RunState",
     "TriggerContext",
-    "TriggerEngine",
     # Utilities
     "format_duration",
     # Logging utilities
@@ -69,4 +67,5 @@ __all__ = [
     "ExecutorError",
     "OrchestratorShutdownError",
     "TriggerCycleError",
+    "VariableResolutionError",
 ]

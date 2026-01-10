@@ -15,6 +15,7 @@ import logging
 from datetime import datetime
 
 from .command_config import CommandConfig
+from .exceptions import ConfigValidationError
 from .run_result import RunResult
 from .types import NewRunDecision
 
@@ -128,4 +129,4 @@ class ConcurrencyPolicy:
             )
             return NewRunDecision(allow=True, runs_to_cancel=active_runs.copy())
         else:
-            raise ValueError(f"Invalid on_retrigger value: {config.on_retrigger}")
+            raise ConfigValidationError(f"Invalid on_retrigger value: {config.on_retrigger}")

@@ -1,4 +1,4 @@
-Great—this is the right moment to think about marketing, because **cmdorc already has something rare**: a clear niche and a coherent mental model. That makes distribution much easier than for “general automation tools.”
+Great-this is the right moment to think about marketing, because **cmdorc already has something rare**: a clear niche and a coherent mental model. That makes distribution much easier than for “general automation tools.”
 
 I’ll break this into **practical, founder-friendly marketing**, not VC-scale nonsense:
 
@@ -14,7 +14,7 @@ This is opinionated on purpose.
 
 ## 1. Pick One Beachhead Audience (Don’t Market to “Developers”)
 
-Cmdorc can serve many audiences—but marketing only works if you **start with one**.
+Cmdorc can serve many audiences-but marketing only works if you **start with one**.
 
 ### Best initial beachhead (in order):
 
@@ -57,7 +57,7 @@ Use phrases like:
 * **“Stop juggling terminal tabs.”**
 * **“Make your CLI workflows reactive, not linear.”**
 * **“A reactive command graph for your terminal.”**
-* **“Cron + Make + Watchexec + a TUI—without the baggage.”**
+* **“Cron + Make + Watchexec + a TUI-without the baggage.”**
 * **“Before you need CI.”**
 
 Avoid:
@@ -69,7 +69,7 @@ Avoid:
 
 ### One-sentence homepage pitch (workshop-ready)
 
-> Cmdorc lets you wire CLI commands together with events instead of scripts—and see everything live in a terminal UI.
+> Cmdorc lets you wire CLI commands together with events instead of scripts-and see everything live in a terminal UI.
 
 If you can’t tweet it, it’s too long.
 
@@ -132,7 +132,7 @@ Subreddits where cmdorc fits **naturally**:
 
 Post format:
 
-* “I built a tool to make CLI workflows reactive—looking for feedback”
+* “I built a tool to make CLI workflows reactive-looking for feedback”
 * Include a short GIF
 * Ask a real question at the end
 
@@ -148,7 +148,7 @@ Write 2–3 posts like:
 
 * “Why I stopped using Make for local automation”
 * “Event-driven CLI workflows without YAML hell”
-* “Textual made terminal dashboards viable—here’s what I built”
+* “Textual made terminal dashboards viable-here’s what I built”
 
 These posts:
 

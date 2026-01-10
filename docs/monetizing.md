@@ -1,4 +1,4 @@
-This is the *right* question—and you’re also right to be suspicious of the naïve answer (“just make some features premium”). For **developer tools like cmdorc**, feature-gating is often the *worst* first monetization move.
+This is the *right* question-and you’re also right to be suspicious of the naïve answer (“just make some features premium”). For **developer tools like cmdorc**, feature-gating is often the *worst* first monetization move.
 
 I’ll walk you through this in a grounded way:
 
@@ -210,7 +210,7 @@ Examples:
 * Hosted dashboard
 * Slack / GitHub integrations
 
-People pay because it saves time—not because they’re forced.
+People pay because it saves time-not because they’re forced.
 
 ---
 

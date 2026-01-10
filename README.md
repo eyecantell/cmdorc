@@ -4,8 +4,8 @@
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![CI](https://github.com/eyecantell/cmdorc/actions/workflows/ci.yml/badge.svg)](https://github.com/eyecantell/cmdorc/actions/runs/20610660160)
-[![Tests](https://img.shields.io/badge/tests-439%20passing-brightgreen)](https://github.com/eyecantell/cmdorc/tree/main/tests)
-[![Coverage](https://img.shields.io/badge/coverage-94%25-brightgreen)](https://github.com/eyecantell/cmdorc)
+[![Tests](https://img.shields.io/badge/tests-480%20passing-brightgreen)](https://github.com/eyecantell/cmdorc/tree/main/tests)
+[![Coverage](https://img.shields.io/badge/coverage-93%25-brightgreen)](https://github.com/eyecantell/cmdorc)
 [![Downloads](https://pepy.tech/badge/cmdorc)](https://pepy.tech/project/cmdorc)
 [![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 [![Typing: PEP 561](https://img.shields.io/badge/typing-PEP%20561-blue)](https://peps.python.org/pep-0561/)
@@ -223,8 +223,7 @@ print(handle.trigger_chain)  # []
 # Triggered run
 await orchestrator.trigger("user_saves")  # → Lint → Tests
 handle = orchestrator.get_active_handles("Tests")[0]
-print(handle.trigger_chain)
-# ["user_saves", "command_started:Lint", "command_success:Lint"]
+print(handle.trigger_chain)  # ["user_saves", "command_started:Lint", "command_success:Lint"]
 ```
 
 **Use cases:**
@@ -451,6 +450,7 @@ output_extension = ".json"              # Override: JSON format for parsing
 ```
 .cmdorc/outputs/
   Tests/
+    latest_run.toml         # Latest run status (always reflects most recent run)
     run-123e4567/           # Each run gets its own directory
       metadata.toml         # Run metadata (state, duration, trigger chain, resolved command)
       output.log            # Command output (uses configured extension)
@@ -458,6 +458,12 @@ output_extension = ".json"              # Override: JSON format for parsing
       metadata.toml
       output.log
 ```
+
+**Latest Run Status:**
+- `latest_run.toml` always reflects the most recent run's state (PENDING → RUNNING → SUCCESS/FAILED/CANCELLED)
+- Useful for external observers (LLMs, monitoring tools) to check command status without traversing run directories
+- Updated atomically at each lifecycle transition for reliable reads
+- With `max_concurrent > 1`, concurrent runs race to update this file (last writer wins)
 
 **Access via RunHandle:**
 ```python
@@ -721,10 +727,17 @@ Control how commands behave when triggered multiple times:
 
 ### Error Handling & Exceptions
 
-Handle failures gracefully with cmdorc-specific exceptions:
+Handle failures gracefully with cmdorc-specific exceptions (all inherit from `CmdorcError`):
 - `CommandNotFoundError` - Command not in registry
 - `ConcurrencyLimitError` - Too many concurrent runs
 - `DebounceError` - Triggered too soon after last run
+- `ConfigValidationError` - Invalid configuration (bad values, constraints violated)
+- `VariableResolutionError` - Variable resolution failed (missing variable, circular dependency, max depth exceeded)
+- `TriggerCycleError` - Infinite trigger loop detected
+- `ExecutorError` - Executor encountered unrecoverable error
+- `OrchestratorShutdownError` - Operation rejected during orchestrator shutdown
+
+Catch `CmdorcError` to handle any cmdorc-specific error.
 
 **Example:** See `examples/advanced/02_error_handling.py` for comprehensive error handling patterns and recovery strategies.
 

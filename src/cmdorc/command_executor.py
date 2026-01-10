@@ -123,5 +123,22 @@ class CommandExecutor(ABC):
         """
         pass
 
+    def update_latest_run(self, result: RunResult) -> None:  # noqa: B027
+        """
+        Update latest_run.toml with current run state (optional).
+
+        This method is called by the orchestrator at key lifecycle points:
+        - After run is accepted (PENDING state)
+
+        Executors that support output storage should override this
+        to also update on RUNNING and completion states.
+
+        Default implementation does nothing.
+
+        Args:
+            result: The RunResult to write to latest_run.toml
+        """
+        pass
+
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}()"

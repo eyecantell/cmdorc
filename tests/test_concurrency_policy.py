@@ -5,7 +5,7 @@ Tests for ConcurrencyPolicy - the pure decision logic component.
 
 import pytest
 
-from cmdorc import CommandConfig, ConcurrencyPolicy, RunResult
+from cmdorc import CommandConfig, ConcurrencyPolicy, ConfigValidationError, RunResult
 
 
 @pytest.fixture
@@ -207,8 +207,8 @@ class TestEdgeCases:
 
         active_run = RunResult(command_name="test")
 
-        # Invalid on_retrigger value should raise ValueError
-        with pytest.raises(ValueError, match="Invalid on_retrigger value"):
+        # Invalid on_retrigger value should raise ConfigValidationError
+        with pytest.raises(ConfigValidationError, match="Invalid on_retrigger value"):
             policy.decide(config, [active_run])
 
     def test_empty_active_runs_list(self, policy, basic_config):

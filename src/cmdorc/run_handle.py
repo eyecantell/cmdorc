@@ -56,7 +56,7 @@ class RunHandle:
         self._completion_event: asyncio.Event | None = None
         self._watcher_task: asyncio.Task[None] | None = None
 
-        # Try to get loop now — if none, defer all setup
+        # Try to get loop now - if none, defer all setup
         try:
             asyncio.get_running_loop()
         except RuntimeError:
@@ -130,7 +130,7 @@ class RunHandle:
             self._future = loop.create_future()
 
             if self._result.is_finalized:
-                # Already done — resolve immediately
+                # Already done - resolve immediately
                 self._future.set_result(self._result)
             else:
                 # Set up event + watcher

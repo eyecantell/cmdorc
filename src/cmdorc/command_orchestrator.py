@@ -32,6 +32,7 @@ from .exceptions import (
     CommandNotFoundError,
     ConcurrencyLimitError,
     DebounceError,
+    ExecutorError,
     OrchestratorShutdownError,
     TriggerCycleError,
 )
@@ -252,12 +253,22 @@ class CommandOrchestrator:
         # Emit command_started trigger (non-blocking background task)
         asyncio.create_task(self._emit_auto_trigger(f"command_started:{name}", handle))
 
+        # Update latest_run.toml with PENDING state
+        self._executor.update_latest_run(result)
+
         # Start executor (non-blocking)
         try:
             await self._executor.start_run(result, resolved)
-        except Exception as e:
-            # If executor.start_run() fails, mark as failed and unregister
+        except ExecutorError as e:
+            # Executor failed to start run - mark as failed and unregister
             result.mark_failed(str(e))
+            self._runtime.mark_run_complete(result)
+            await self._unregister_handle(result.run_id)
+            raise
+        except Exception as e:
+            # Unexpected error (not from executor) - log and re-raise to avoid masking bugs
+            logger.exception(f"Unexpected error starting run {result.run_id[:8]}: {e}")
+            result.mark_failed(f"Unexpected error: {e}")
             self._runtime.mark_run_complete(result)
             await self._unregister_handle(result.run_id)
             raise
@@ -338,11 +349,18 @@ class CommandOrchestrator:
         for config in cancel_matches:
             try:
                 await self.cancel_command(config.name, f"cancel_on_trigger:{event_name}")
-            except Exception as e:
-                logger.exception(
-                    f"Error cancelling command '{config.name}' for trigger '{event_name}': {e}"
+            except (CommandNotFoundError, OrchestratorShutdownError) as e:
+                # Expected errors - command removed or shutting down
+                logger.warning(
+                    f"Could not cancel command '{config.name}' for trigger '{event_name}': {e}"
                 )
                 continue
+            except Exception as e:
+                # Unexpected error - log and re-raise to avoid masking bugs
+                logger.exception(
+                    f"Unexpected error cancelling command '{config.name}' for trigger '{event_name}': {e}"
+                )
+                raise
 
         # Handle triggers matches (execute matching commands)
         trigger_matches = self._trigger_engine.get_matching_commands(event_name, "triggers")
@@ -478,12 +496,22 @@ class CommandOrchestrator:
         async with self._handles_lock:
             self._handles[result.run_id] = handle
 
+        # Update latest_run.toml with PENDING state
+        self._executor.update_latest_run(result)
+
         # Start executor
         try:
             await self._executor.start_run(result, resolved)
-        except Exception as e:
-            # If executor.start_run() fails, mark as failed and unregister
+        except ExecutorError as e:
+            # Executor failed to start run - mark as failed and unregister
             result.mark_failed(str(e))
+            self._runtime.mark_run_complete(result)
+            await self._unregister_handle(result.run_id)
+            raise
+        except Exception as e:
+            # Unexpected error (not from executor) - log and re-raise to avoid masking bugs
+            logger.exception(f"Unexpected error starting run {result.run_id[:8]}: {e}")
+            result.mark_failed(f"Unexpected error: {e}")
             self._runtime.mark_run_complete(result)
             await self._unregister_handle(result.run_id)
             raise

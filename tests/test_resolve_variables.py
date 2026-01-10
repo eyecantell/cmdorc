@@ -1,5 +1,6 @@
 import pytest
 
+from cmdorc.exceptions import VariableResolutionError
 from cmdorc.runtime_vars import resolve_double_brace_vars
 
 
@@ -34,7 +35,7 @@ def test_internal_whitespace():
 # ---------------------------------------------------------
 def test_missing_variable_raises():
     vars_dict = {"a": "1"}
-    with pytest.raises(ValueError):
+    with pytest.raises(VariableResolutionError):
         resolve_double_brace_vars("{{ missing }}", vars_dict)
 
 
@@ -109,7 +110,7 @@ def test_no_placeholders():
 def test_unresolved_after_max_depth_raises():
     # Variable refers to itself -> infinite loop
     vars_dict = {"a": "{{ a }}"}
-    with pytest.raises(ValueError):
+    with pytest.raises(VariableResolutionError):
         resolve_double_brace_vars("{{ a }}", vars_dict)
 
 
@@ -119,5 +120,5 @@ def test_unresolvable_nested_after_max_depth_raises():
         "a": "{{ b }}",
         # missing b
     }
-    with pytest.raises(ValueError):
+    with pytest.raises(VariableResolutionError):
         resolve_double_brace_vars("{{ a }}", vars_dict)

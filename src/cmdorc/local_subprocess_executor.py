@@ -125,6 +125,9 @@ class LocalSubprocessExecutor(CommandExecutor):
             # Mark as running
             result.mark_running()
 
+            # Update latest_run.toml to reflect RUNNING state
+            self.update_latest_run(result)
+
             # Wait for completion (with optional timeout)
             if resolved.timeout_secs:
                 logger.debug(f"Run {run_id[:8]} has timeout of {resolved.timeout_secs}s")
@@ -191,7 +194,10 @@ class LocalSubprocessExecutor(CommandExecutor):
             raise
 
         except Exception as e:
-            # Unexpected error during execution
+            # Catch-all for unexpected errors during execution (OSError, UnicodeError, etc.)
+            # This prevents the monitoring task from crashing while ensuring the run is marked as failed
+            # We use broad Exception catching here defensively - the alternative would be to let
+            # exceptions crash the task, but that could leave the run in an inconsistent state
             logger.exception(f"Unexpected error monitoring run {run_id[:8]}: {e}")
             result.mark_failed(e)
 
@@ -413,6 +419,10 @@ class LocalSubprocessExecutor(CommandExecutor):
             # Write metadata file (includes output_file name for parser)
             metadata_path.write_text(result.to_toml(), encoding="utf-8")
 
+            # Update latest_run.toml to reflect this run's completion
+            # External observers can check this file without traversing run_ids
+            self.update_latest_run(result)
+
             logger.debug(f"Wrote output files to {run_dir}")
 
         except Exception as e:
@@ -420,6 +430,71 @@ class LocalSubprocessExecutor(CommandExecutor):
             logger.error(f"{error_msg} for run {result.run_id[:8]}")
             result.output_write_error = error_msg
             # Don't re-raise - file writing errors shouldn't fail the run
+
+    def _write_latest_run_toml(self, command_name: str, toml_content: str) -> None:
+        """
+        Write latest_run.toml atomically to command directory.
+
+        This file always reflects the most recent run's state, making it easy
+        for external observers to check command status without traversing runs.
+
+        Uses atomic write (temp file + rename) to prevent partial reads.
+
+        Note: With max_concurrent > 1, concurrent runs race to update this file.
+        The last run to write wins. This is safe but non-deterministic.
+
+        Args:
+            command_name: Name of the command
+            toml_content: TOML content to write
+        """
+        if not self._output_storage or not self._output_storage.is_enabled:
+            return
+
+        # Build command directory path
+        command_dir = Path(self._output_storage.directory) / command_name
+        command_dir.mkdir(parents=True, exist_ok=True)
+
+        # Atomic write: write to temp file, then rename
+        latest_path = command_dir / "latest_run.toml"
+        temp_path = latest_path.with_suffix(".toml.tmp")
+
+        try:
+            temp_path.write_text(toml_content, encoding="utf-8")
+            temp_path.rename(latest_path)  # Atomic on POSIX
+            logger.debug(f"Updated {latest_path}")
+        except OSError as e:
+            logger.error(f"Failed to write latest_run.toml for {command_name}: {e}")
+        finally:
+            # Clean up temp file if rename failed
+            if temp_path.exists():
+                try:
+                    temp_path.unlink()
+                except OSError:
+                    pass
+
+    def update_latest_run(self, result: RunResult) -> None:
+        """
+        Update latest_run.toml with current run state.
+
+        This file always reflects the most recent run's state, making it easy
+        for external observers to check command status without traversing runs.
+
+        Can be called at any point in the run lifecycle:
+        - PENDING: Run accepted, not yet started
+        - RUNNING: Subprocess executing
+        - SUCCESS/FAILED/CANCELLED: Run completed
+
+        Note: With max_concurrent > 1, concurrent runs race to update this file.
+        The last run to write wins. This is safe but non-deterministic.
+
+        Args:
+            result: The RunResult to write to latest_run.toml
+        """
+        if not self._output_storage or not self._output_storage.is_enabled:
+            return
+
+        toml_content = result.to_toml()
+        self._write_latest_run_toml(result.command_name, toml_content)
 
     def __repr__(self) -> str:
         active = len(self._processes)

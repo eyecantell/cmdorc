@@ -559,3 +559,208 @@ class TestIntegration:
         # No files should be written
         assert handle.output_file is None
         assert handle.metadata_file is None
+
+
+# =====================================================================
+# Latest Run TOML Tests
+# =====================================================================
+
+
+@pytest.mark.asyncio
+class TestLatestRunToml:
+    """Tests for latest_run.toml functionality."""
+
+    async def test_latest_run_toml_created_on_completion(self, temp_output_dir, storage_config):
+        """latest_run.toml is created when command completes."""
+        executor = LocalSubprocessExecutor(output_storage=storage_config)
+        result = RunResult(command_name="Echo", run_id="run-latest-001")
+        resolved = ResolvedCommand(
+            command='echo "hello"', cwd=None, env={}, timeout_secs=None, vars={}
+        )
+
+        await executor.start_run(result, resolved)
+        await asyncio.sleep(0.2)  # Wait for completion
+
+        # Check latest_run.toml exists
+        latest_path = temp_output_dir / "Echo" / "latest_run.toml"
+        assert latest_path.exists()
+
+        # Check content matches metadata
+        latest_content = latest_path.read_text()
+        assert 'command_name = "Echo"' in latest_content
+        assert 'run_id = "run-latest-001"' in latest_content
+        assert 'state = "success"' in latest_content
+
+    async def test_latest_run_toml_updated_on_new_run(self, temp_output_dir, storage_config):
+        """latest_run.toml is updated when a new run completes."""
+        executor = LocalSubprocessExecutor(output_storage=storage_config)
+
+        # First run
+        result1 = RunResult(command_name="Echo", run_id="run-001")
+        resolved = ResolvedCommand(
+            command='echo "run1"', cwd=None, env={}, timeout_secs=None, vars={}
+        )
+        await executor.start_run(result1, resolved)
+        await asyncio.sleep(0.2)
+
+        latest_path = temp_output_dir / "Echo" / "latest_run.toml"
+        content1 = latest_path.read_text()
+        assert 'run_id = "run-001"' in content1
+
+        # Second run
+        result2 = RunResult(command_name="Echo", run_id="run-002")
+        await executor.start_run(result2, resolved)
+        await asyncio.sleep(0.2)
+
+        # latest_run.toml should now point to run-002
+        content2 = latest_path.read_text()
+        assert 'run_id = "run-002"' in content2
+        assert 'run_id = "run-001"' not in content2
+
+    async def test_latest_run_toml_not_created_when_disabled(self, temp_output_dir):
+        """latest_run.toml is not created when output storage is disabled."""
+        disabled_config = OutputStorageConfig(
+            directory=str(temp_output_dir),
+            keep_history=0,  # Disabled
+        )
+        executor = LocalSubprocessExecutor(output_storage=disabled_config)
+        result = RunResult(command_name="Echo", run_id="run-003")
+        resolved = ResolvedCommand(
+            command='echo "test"', cwd=None, env={}, timeout_secs=None, vars={}
+        )
+
+        await executor.start_run(result, resolved)
+        await asyncio.sleep(0.2)
+
+        # No latest_run.toml should exist
+        latest_path = temp_output_dir / "Echo" / "latest_run.toml"
+        assert not latest_path.exists()
+
+    async def test_latest_run_toml_shows_pending_state(self, temp_output_dir, storage_config):
+        """latest_run.toml can be updated with PENDING state."""
+        executor = LocalSubprocessExecutor(output_storage=storage_config)
+        result = RunResult(command_name="Echo", run_id="run-pending")
+
+        # Manually call update_latest_run with PENDING state
+        executor.update_latest_run(result)
+
+        # Check latest_run.toml exists with PENDING state
+        latest_path = temp_output_dir / "Echo" / "latest_run.toml"
+        assert latest_path.exists()
+
+        content = latest_path.read_text()
+        assert 'state = "pending"' in content
+        assert 'run_id = "run-pending"' in content
+
+    async def test_latest_run_toml_shows_running_state(self, temp_output_dir, storage_config):
+        """latest_run.toml is updated with RUNNING state during execution."""
+        executor = LocalSubprocessExecutor(output_storage=storage_config)
+        result = RunResult(command_name="LongRun", run_id="run-long")
+        resolved = ResolvedCommand(
+            command='sleep 1 && echo "done"', cwd=None, env={}, timeout_secs=None, vars={}
+        )
+
+        await executor.start_run(result, resolved)
+        await asyncio.sleep(0.1)  # Wait for process to start but not complete
+
+        # Check latest_run.toml shows RUNNING state
+        latest_path = temp_output_dir / "LongRun" / "latest_run.toml"
+        assert latest_path.exists()
+
+        content = latest_path.read_text()
+        assert 'state = "running"' in content
+
+        # Wait for completion
+        await asyncio.sleep(1.5)
+
+        # Should now show success
+        final_content = latest_path.read_text()
+        assert 'state = "success"' in final_content
+
+    async def test_latest_run_toml_lifecycle_states(self, temp_output_dir, storage_config):
+        """latest_run.toml reflects all lifecycle states (PENDING → RUNNING → SUCCESS)."""
+        executor = LocalSubprocessExecutor(output_storage=storage_config)
+        result = RunResult(command_name="Lifecycle", run_id="run-lifecycle")
+        resolved = ResolvedCommand(
+            command='echo "test"', cwd=None, env={}, timeout_secs=None, vars={}
+        )
+
+        latest_path = temp_output_dir / "Lifecycle" / "latest_run.toml"
+
+        # 1. PENDING state (manually trigger)
+        executor.update_latest_run(result)
+        assert latest_path.exists()
+        pending_content = latest_path.read_text()
+        assert 'state = "pending"' in pending_content
+
+        # 2. Start run (will move to RUNNING, then SUCCESS)
+        await executor.start_run(result, resolved)
+        await asyncio.sleep(0.2)
+
+        # 3. Final state should be SUCCESS
+        final_content = latest_path.read_text()
+        assert 'state = "success"' in final_content
+
+    async def test_latest_run_toml_with_failed_run(self, temp_output_dir, storage_config):
+        """latest_run.toml shows FAILED state for failed runs."""
+        executor = LocalSubprocessExecutor(output_storage=storage_config)
+        result = RunResult(command_name="Fail", run_id="run-fail")
+        resolved = ResolvedCommand(command="exit 1", cwd=None, env={}, timeout_secs=None, vars={})
+
+        await executor.start_run(result, resolved)
+        await asyncio.sleep(0.2)
+
+        latest_path = temp_output_dir / "Fail" / "latest_run.toml"
+        assert latest_path.exists()
+
+        content = latest_path.read_text()
+        assert 'state = "failed"' in content
+        assert "success = false" in content
+
+    async def test_latest_run_toml_with_orchestrator(self, tmp_path):
+        """latest_run.toml is updated through orchestrator lifecycle."""
+        output_dir = tmp_path / "outputs"
+        commands = [CommandConfig(name="Test", command='echo "hello"', triggers=["test"])]
+        runner_config = RunnerConfig(
+            commands=commands,
+            output_storage=OutputStorageConfig(directory=str(output_dir), keep_history=5),
+        )
+        orchestrator = CommandOrchestrator(runner_config)
+
+        handle = await orchestrator.run_command("Test")
+        await handle.wait()
+
+        # Check latest_run.toml exists
+        latest_path = output_dir / "Test" / "latest_run.toml"
+        assert latest_path.exists()
+
+        content = latest_path.read_text()
+        assert 'command_name = "Test"' in content
+        assert 'state = "success"' in content
+
+    async def test_latest_run_toml_with_concurrent_runs(self, temp_output_dir, storage_config):
+        """latest_run.toml handles concurrent runs (last writer wins)."""
+        executor = LocalSubprocessExecutor(output_storage=storage_config)
+
+        # Start two concurrent runs
+        result1 = RunResult(command_name="Concurrent", run_id="run-c1")
+        result2 = RunResult(command_name="Concurrent", run_id="run-c2")
+        resolved = ResolvedCommand(
+            command='sleep 0.1 && echo "done"', cwd=None, env={}, timeout_secs=None, vars={}
+        )
+
+        await executor.start_run(result1, resolved)
+        await asyncio.sleep(0.01)  # Small delay
+        await executor.start_run(result2, resolved)
+
+        # Wait for both to complete
+        await asyncio.sleep(0.3)
+
+        # latest_run.toml should exist and point to one of the runs (non-deterministic)
+        latest_path = temp_output_dir / "Concurrent" / "latest_run.toml"
+        assert latest_path.exists()
+
+        content = latest_path.read_text()
+        # Should be one of the two runs
+        assert ('run_id = "run-c1"' in content) or ('run_id = "run-c2"' in content)
+        assert 'state = "success"' in content

@@ -3,6 +3,7 @@
 import pytest
 
 from cmdorc.command_config import CommandConfig
+from cmdorc.exceptions import VariableResolutionError
 from cmdorc.runtime_vars import (
     merge_vars,
     prepare_resolved_command,
@@ -133,21 +134,23 @@ def test_resolve_runtime_vars_shell_escape_not_replaced():
 
 
 def test_resolve_runtime_vars_missing_variable():
-    """resolve_runtime_vars raises ValueError for missing variable."""
-    with pytest.raises(ValueError, match="Missing variable: 'undefined'"):
+    """resolve_runtime_vars raises VariableResolutionError for missing variable."""
+    with pytest.raises(VariableResolutionError, match="Missing variable: 'undefined'"):
         resolve_runtime_vars("{{ undefined }}", {})
 
 
 def test_resolve_runtime_vars_missing_enriched_error():
     """resolve_runtime_vars error includes original template."""
-    with pytest.raises(ValueError, match="In template 'dir: {{ missing }}'"):
+    with pytest.raises(VariableResolutionError, match="In template 'dir: {{ missing }}'"):
         resolve_runtime_vars("dir: {{ missing }}", {})
 
 
 def test_resolve_runtime_vars_cycle_detected():
     """resolve_runtime_vars detects variable cycles."""
     vars_dict = {"a": "{{ b }}", "b": "{{ a }}"}
-    with pytest.raises(ValueError, match="Failed to resolve variables after .* passes"):
+    with pytest.raises(
+        VariableResolutionError, match="Failed to resolve variables after .* passes"
+    ):
         resolve_runtime_vars("{{ a }}", vars_dict)
 
 
@@ -161,7 +164,9 @@ def test_resolve_runtime_vars_exceeds_max_depth():
         else:
             vars_dict[f"v{i}"] = "{{ v" + str(i + 1) + " }}"
 
-    with pytest.raises(ValueError, match="Failed to resolve variables after .* passes"):
+    with pytest.raises(
+        VariableResolutionError, match="Failed to resolve variables after .* passes"
+    ):
         resolve_runtime_vars("{{ v0 }}", vars_dict, max_depth=10)
 
 
@@ -356,7 +361,7 @@ def test_prepare_resolved_command_error_missing_variable():
     )
     global_vars = {}  # No 'target'
 
-    with pytest.raises(ValueError, match="Missing variable: 'target'"):
+    with pytest.raises(VariableResolutionError, match="Missing variable: 'target'"):
         prepare_resolved_command(config, global_vars)
 
 
@@ -369,7 +374,7 @@ def test_prepare_resolved_command_error_includes_command_context():
     )
     global_vars = {}
 
-    with pytest.raises(ValueError, match="In template 'deploy to .* target"):
+    with pytest.raises(VariableResolutionError, match="In template 'deploy to .* target"):
         prepare_resolved_command(config, global_vars)
 
 

@@ -16,7 +16,7 @@ cmdorc shines in lightweight, async-first, embeddable scenarios (e.g., TUIs or a
 #### Key Insights
 - **cmdorc's Edge**: Its async-first design and string triggers make it uniquely suited for reactive, embeddable use cases (e.g., TUIs with real-time events). Minimal deps and TOML config keep it lightweight without sacrificing safety (e.g., built-in cycle/debounce).
 - **Trade-offs**: Tools like Prefect/Celery offer scalability for distributed setups but add overhead (brokers, servers). Simpler runners (Invoke/Doit) lack cmdorc's event flexibility.
-- **Design Prudence**: This matrix focuses on core orchestration needs—avoiding overkill like full DAGs (Airflow) or testing-only (Nox). If expanding cmdorc, consider optional distributed backends via Executor ABC, but keep it lean to ship v1.0 fast.
+- **Design Prudence**: This matrix focuses on core orchestration needs-avoiding overkill like full DAGs (Airflow) or testing-only (Nox). If expanding cmdorc, consider optional distributed backends via Executor ABC, but keep it lean to ship v1.0 fast.
 
 ### Updated Comparison Matrix: cmdorc vs. Common Orchestration Tools
 
@@ -36,9 +36,9 @@ The **Best For** column highlights each tool's strongest niche *among this group
 | **n8n**    | ✅ (Node.js event-driven; async by default) | ✅ (Webhooks, schedules, app events as nodes) | ✅ (Env-var limits, queue mode w/ Redis) | ⚠️ (Workflow design prevents loops; no auto-detect) | ⚠️ (Community nodes/custom for debounce) | JSON (exportable workflows) or UI (visual editor) | No-code/low-code automations with 300+ integrations (Zapier alt) |
 
 #### Key Insights from Updates
-- **Airflow** fits as a heavyweight for structured, production-grade orchestration—its async triggers and built-in DAG cycle prevention make it robust for data teams, but it's overkill for simple shell runs (heavy setup with metadata DB).
+- **Airflow** fits as a heavyweight for structured, production-grade orchestration-its async triggers and built-in DAG cycle prevention make it robust for data teams, but it's overkill for simple shell runs (heavy setup with metadata DB).
 - **n8n** brings low-code appeal with strong triggers and concurrency (e.g., via N8N_CONCURRENCY_PRODUCTION_LIMIT), but relies on custom/community solutions for debounce/cycles. It's less code-centric than cmdorc, shining in quick integrations (e.g., Slack-to-DB workflows).
-- **cmdorc's Position**: Still uniquely nimble for async, event-driven shell commands in embeddable Python contexts—prudent to keep it lean (no UI/broker bloat) while its safety features (cycles/debounce) rival bigger tools without the overhead.
-- **Trade-offs**: Heavier tools (Airflow, Prefect) scale for teams but add complexity; lighter ones (Invoke, Nox) lack cmdorc's reactivity. For v1.0, focus on core strengths—perhaps add optional JSON config parity with n8n for broader appeal, but only if it fits without over-engineering.
+- **cmdorc's Position**: Still uniquely nimble for async, event-driven shell commands in embeddable Python contexts-prudent to keep it lean (no UI/broker bloat) while its safety features (cycles/debounce) rival bigger tools without the overhead.
+- **Trade-offs**: Heavier tools (Airflow, Prefect) scale for teams but add complexity; lighter ones (Invoke, Nox) lack cmdorc's reactivity. For v1.0, focus on core strengths-perhaps add optional JSON config parity with n8n for broader appeal, but only if it fits without over-engineering.
 
 If you'd like to tweak features (e.g., add "Distributed Support"), expand "Best For" with examples, or prototype a cmdorc extension inspired by these, just say the word!

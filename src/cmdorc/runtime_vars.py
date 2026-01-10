@@ -27,6 +27,7 @@ import os
 import re
 
 from .command_config import CommandConfig
+from .exceptions import VariableResolutionError
 from .run_result import ResolvedCommand
 
 logger = logging.getLogger(__name__)
@@ -69,7 +70,7 @@ def resolve_double_brace_vars(value: str, vars_dict: dict[str, str], *, max_dept
             var_name = match.group(1)
 
             if var_name not in vars_dict:
-                raise ValueError(f"Missing variable: '{var_name}'")
+                raise VariableResolutionError(f"Missing variable: '{var_name}'")
 
             changed = True
             return vars_dict[var_name]
@@ -85,7 +86,7 @@ def resolve_double_brace_vars(value: str, vars_dict: dict[str, str], *, max_dept
     if VAR_PATTERN.search(value):
         # Extract unresolved variable names to help with debugging
         unresolved_vars = re.findall(r"\{\{\s*(\w+)\s*\}\}", value)
-        raise ValueError(
+        raise VariableResolutionError(
             f"Failed to resolve variables after {max_depth} passes. "
             f"Remaining unresolved variables in '{value}': {unresolved_vars}. "
             f"This may indicate a circular dependency or missing variable definition."
@@ -186,7 +187,7 @@ def resolve_runtime_vars(
         Fully resolved string with all variables substituted
 
     Raises:
-        ValueError: If variable is missing, cycles detected, or max depth exceeded
+        VariableResolutionError: If variable is missing, cycles detected, or max depth exceeded
     """
     # First, convert $VAR_NAME to {{ VAR_NAME }} for uniform handling
     processed = _preprocess_env_vars(template_str)
@@ -194,9 +195,9 @@ def resolve_runtime_vars(
     # Then resolve using local resolve_double_brace_vars function
     try:
         return resolve_double_brace_vars(processed, merged_vars, max_depth=max_depth)
-    except ValueError as e:
+    except VariableResolutionError as e:
         # Enrich error with context
-        raise ValueError(f"In template '{template_str}': {e}") from e
+        raise VariableResolutionError(f"In template '{template_str}': {e}") from e
 
 
 def prepare_resolved_command(

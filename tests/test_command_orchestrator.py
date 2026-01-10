@@ -33,6 +33,7 @@ from cmdorc import (
     RunState,
     TriggerContext,
     TriggerCycleError,
+    VariableResolutionError,
 )
 
 logging.getLogger("cmdorc").setLevel(logging.DEBUG)
@@ -946,7 +947,7 @@ class TestQueries:
         runner_config = RunnerConfig(commands=[config])
         orchestrator = CommandOrchestrator(runner_config, executor=MockExecutor())
 
-        with pytest.raises(ValueError, match="Missing variable"):
+        with pytest.raises(VariableResolutionError, match="Missing variable"):
             orchestrator.preview_command("Deploy")
 
     def test_preview_command_nested_variables(self):
@@ -1650,10 +1651,9 @@ class TestErrorHandlingAndEdgeCases:
         orchestrator.cancel_command = failing_cancel
 
         try:
-            # Trigger should handle exception gracefully
-            await orchestrator.trigger("fail_cancel_event")
-            await asyncio.sleep(0.05)
-            # Should not raise
+            # With our bug fix, unexpected errors are now re-raised to avoid masking bugs
+            with pytest.raises(ValueError, match="Unexpected error in cancel"):
+                await orchestrator.trigger("fail_cancel_event")
         finally:
             orchestrator.cancel_command = original_cancel
 

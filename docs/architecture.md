@@ -656,6 +656,10 @@ _tasks: dict[str, asyncio.Task]  # Monitor tasks, keyed by run_id
 - Implements timeout via `asyncio.wait_for()`
 - Cancellation sends SIGTERM, then SIGKILL after grace period
 - Cleans up process handles on completion
+- When output storage is enabled:
+  - Writes per-run metadata and output files to `{command_name}/{run_id}/`
+  - Updates `{command_name}/latest_run.toml` atomically at each lifecycle transition (PENDING → RUNNING → completion)
+  - `latest_run.toml` always reflects the most recent run's state for easy external monitoring
 
 ---
 

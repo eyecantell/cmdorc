@@ -141,7 +141,7 @@ class RunResult:
     # ------------------------------------------------------------------ #
     # State transitions
     # ------------------------------------------------------------------ #
-    def mark_running(self, comment: str = None) -> None:
+    def mark_running(self, comment: str | None = None) -> None:
         """Transition to RUNNING and record start time."""
         self.state = RunState.RUNNING
         self.start_time = datetime.datetime.now()
@@ -149,7 +149,7 @@ class RunResult:
             self.comment = comment
         logger.debug(f"Run {self.run_id[:8]} ('{self.command_name}') started")
 
-    def mark_success(self, comment: str = None) -> None:
+    def mark_success(self, comment: str | None = None) -> None:
         """Mark as successfully completed."""
         self.state = RunState.SUCCESS
         self.success = True
@@ -160,7 +160,7 @@ class RunResult:
             f"Run {self.run_id[:8]} ('{self.command_name}') succeeded in {self.duration_str}"
         )
 
-    def mark_failed(self, error: str | Exception, comment: str = None) -> None:
+    def mark_failed(self, error: str | Exception, comment: str | None = None) -> None:
         """Mark as failed."""
         self.state = RunState.FAILED
         self.success = False
@@ -171,7 +171,7 @@ class RunResult:
         msg = str(error) if isinstance(error, Exception) else error
         logger.debug(f"Run {self.run_id[:8]} ('{self.command_name}') failed: {msg}")
 
-    def mark_cancelled(self, comment: str = None) -> None:
+    def mark_cancelled(self, comment: str | None = None) -> None:
         """Mark as cancelled."""
         self.state = RunState.CANCELLED
         self.success = None

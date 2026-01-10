@@ -80,6 +80,23 @@ class ConfigValidationError(CmdorcError):
     pass
 
 
+class VariableResolutionError(CmdorcError):
+    """
+    Raised when variable resolution fails.
+
+    This occurs when:
+    - A variable referenced in a template cannot be found
+    - Circular variable dependencies are detected
+    - Maximum resolution depth is exceeded
+
+    Example:
+        >>> resolve_variables("{{ missing_var }}", {})
+        VariableResolutionError: Missing variable: 'missing_var'
+    """
+
+    pass
+
+
 class ExecutorError(CmdorcError):
     """
     Raised when executor encounters an unrecoverable error.

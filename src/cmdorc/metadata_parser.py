@@ -119,7 +119,7 @@ def parse_metadata_file(metadata_path: Path) -> RunResult | None:
         logger.warning(f"Metadata file not found: {metadata_path}")
         return None
     except Exception as e:
-        logger.error(f"Failed to parse metadata file {metadata_path}: {e}")
+        logger.exception(f"Failed to parse metadata file {metadata_path}: {e}")
         return None
 
 

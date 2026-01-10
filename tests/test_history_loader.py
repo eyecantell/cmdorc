@@ -79,7 +79,7 @@ class TestHistoryLoader:
 
         # Verify files written
         test_dir = output_dir / "Test"
-        run_dirs = list(test_dir.iterdir())
+        run_dirs = [p for p in test_dir.iterdir() if p.is_dir()]
         assert len(run_dirs) == 5
 
         # Phase 2: Create new orchestrator (simulates restart)
@@ -336,7 +336,7 @@ duration_str = "1s"
 
         # Verify files written with .log extension
         test_dir = output_dir / "Test"
-        run_dirs = list(test_dir.iterdir())
+        run_dirs = [p for p in test_dir.iterdir() if p.is_dir()]
         assert len(run_dirs) == 3
         for run_dir in run_dirs:
             assert (run_dir / "output.log").exists()

@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **VariableResolutionError exception** - New custom exception for variable resolution failures
+  - Replaces generic `ValueError` for missing variables, circular dependencies, and resolution depth errors
+  - Provides consistent exception hierarchy for variable-related errors
+  - Users can now catch `VariableResolutionError` specifically or `CmdorcError` for all library errors
+
 ### Fixed
 
 - **Handle cleanup not properly awaited** - `RunHandle.cleanup()` now async and awaits task cancellation
@@ -15,6 +22,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Updated all call sites in `command_orchestrator.py` to await cleanup
   - Prevents "Task was destroyed but it is pending!" warnings on shutdown
   - Fixes dangling task warnings when handles are cleaned up during orchestrator shutdown
+
+- **Inconsistent exception types** - Variable and policy validation now use custom exceptions
+  - `runtime_vars.py` now raises `VariableResolutionError` instead of `ValueError` for missing/unresolved variables
+  - `concurrency_policy.py` now raises `ConfigValidationError` instead of `ValueError` for invalid `on_retrigger` values
+  - Makes error handling consistent with library design and easier to catch specific error types
+
+- **Bare exception catches masking bugs** - Improved exception specificity in critical code paths
+  - `command_orchestrator.py` now distinguishes between expected errors (CommandNotFoundError, OrchestratorShutdownError) and unexpected errors during cancellation
+  - Executor start failures now caught with specific `ExecutorError` type, unexpected errors logged and re-raised
+  - Prevents masking programming errors and improves debuggability
+
+- **TOML parse error handling incomplete** - Now catches both TypeError and ValueError
+  - `load_config.py` exception handling expanded to catch `ValueError` in addition to `TypeError`
+  - Handles validation failures that raise `ValueError` from config dataclass `__post_init__` methods
+  - More robust config parsing with better error messages
+
+- **Type hint gaps in RunResult** - Fixed incorrect type annotations for optional parameters
+  - Changed `comment: str = None` to `comment: str | None = None` in `mark_running()`, `mark_success()`, `mark_failed()`, `mark_cancelled()`
+  - Fixes type checker errors and improves IDE autocomplete accuracy
+
+- **Logging improvements** - Better stack traces in error scenarios
+  - `metadata_parser.py` now uses `logger.exception()` instead of `logger.error()` for parse failures
+  - Provides full stack traces for debugging metadata parsing issues
+
+### Changed
+
+- **Internal classes removed from public API** - CommandRuntime, ConcurrencyPolicy, TriggerEngine no longer in `__all__`
+  - These implementation details are no longer advertised in the public API surface
+  - Classes remain accessible for testing but are not part of the stable public interface
+  - Clarifies that `CommandOrchestrator` is the main entry point for users
+  - **Note:** Technically a breaking change, but these classes were never documented for public use
 
 ## [0.9.0]
 
