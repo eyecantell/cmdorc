@@ -5,9 +5,22 @@ All notable changes to cmdorc will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.10.0]
 
 ### Added
+
+- **latest_run.toml file** - Real-time command status tracking for external observers
+  - New `latest_run.toml` file in each command's output directory (`.cmdorc/outputs/{command_name}/`)
+  - Always reflects the most recent run's state (PENDING → RUNNING → SUCCESS/FAILED/CANCELLED)
+  - Updated atomically at each lifecycle transition for reliable reads by external tools
+  - Enables LLMs and monitoring tools to check command status without traversing run directories
+  - New `update_latest_run()` method on `CommandExecutor` (default no-op, overridable)
+  - `LocalSubprocessExecutor` updates file at PENDING, RUNNING, and completion states
+  - Respects output storage configuration (only writes when `keep_history != 0`)
+  - With `max_concurrent > 1`, concurrent runs race to update (last writer wins, safe)
+  - Uses atomic write pattern (temp file + rename) to prevent partial reads
+  - 9 new comprehensive tests covering all lifecycle states and edge cases
+  - Documentation added to README.md and architecture.md
 
 - **VariableResolutionError exception** - New custom exception for variable resolution failures
   - Replaces generic `ValueError` for missing variables, circular dependencies, and resolution depth errors
